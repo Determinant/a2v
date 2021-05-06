@@ -8,6 +8,7 @@ import fs from 'fs';
 import tar from 'tar';
 import { createSchema as S, TsjsonParser, Validated } from "ts-json-validator";
 import shell from 'shelljs';
+import stripJsonComments from 'strip-json-comments';
 const dnsLookup = util.promisify(dns.lookup);
 
 const ValidatorsSchema = S({
@@ -195,7 +196,9 @@ async function buildImage(config: Validated<typeof ValidatorsSchema>, id: string
 async function main() {
     const yargs = require('yargs/yargs')
     const { hideBin } = require('yargs/helpers')
-    const getConfig = (profile: string) => (new TsjsonParser(ValidatorsSchema)).parse(fs.readFileSync(profile).toString());
+    const getConfig = (profile: string) =>
+        (new TsjsonParser(ValidatorsSchema)).parse(stripJsonComments(
+            fs.readFileSync(profile).toString()));
     const die = (s: string) => {
         process.stderr.write(`${s}\n`);
         process.exit(1);

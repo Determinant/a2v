@@ -49,6 +49,7 @@ var fs_1 = __importDefault(require("fs"));
 var tar_1 = __importDefault(require("tar"));
 var ts_json_validator_1 = require("ts-json-validator");
 var shelljs_1 = __importDefault(require("shelljs"));
+var strip_json_comments_1 = __importDefault(require("strip-json-comments"));
 var dnsLookup = util_1.default.promisify(dns_1.default.lookup);
 var ValidatorsSchema = ts_json_validator_1.createSchema({
     type: "object",
@@ -355,7 +356,9 @@ function main() {
         return __generator(this, function (_a) {
             yargs = require('yargs/yargs');
             hideBin = require('yargs/helpers').hideBin;
-            getConfig = function (profile) { return (new ts_json_validator_1.TsjsonParser(ValidatorsSchema)).parse(fs_1.default.readFileSync(profile).toString()); };
+            getConfig = function (profile) {
+                return (new ts_json_validator_1.TsjsonParser(ValidatorsSchema)).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
+            };
             die = function (s) {
                 process.stderr.write(s + "\n");
                 process.exit(1);

@@ -1,9 +1,21 @@
 {
     "release": "v1.4.1",
     "workDir": "/bigboy/stakers",
-    "baseStakingPort": 9851,
-    "baseHttpPort": 9850,
+    "baseStakingPort": 9651,
+    "baseHttpPort": 9650,
     "hosts": {
+        "example": {
+            "host": "13.229.114.242",
+            "username": "ubuntu",
+            "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
+            "validators": ["mystaker"],
+            // number of cores
+            "ncpu": 2,
+            // number of cores allocated for each node
+            "cpuPerNode": 1,
+            // shifts of core allocation around all nodes
+            "cpuStride": 1
+        },
         "docker1": {
             "host": "avax-host-1",
             "username": "ubuntu",
