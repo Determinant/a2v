@@ -40,8 +40,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.getDocker = exports.validatorsSchema = void 0;
 var Docker = require("dockerode");
 var SSHPromise = require("ssh2-promise");
+/* eslint-disable-next-line */
+/* eslint-disable no-underscore-dangle */
 var sshModem = require('docker-modem/lib/ssh');
 var util_1 = __importDefault(require("util"));
 var dns_1 = __importDefault(require("dns"));
@@ -51,7 +54,9 @@ var ts_json_validator_1 = require("ts-json-validator");
 var shelljs_1 = __importDefault(require("shelljs"));
 var strip_json_comments_1 = __importDefault(require("strip-json-comments"));
 var dnsLookup = util_1.default.promisify(dns_1.default.lookup);
-var ValidatorsSchema = ts_json_validator_1.createSchema({
+var yargs_1 = __importDefault(require("yargs/yargs"));
+var helpers_1 = require("yargs/helpers");
+exports.validatorsSchema = ts_json_validator_1.createSchema({
     type: "object",
     properties: {
         release: ts_json_validator_1.createSchema({ type: "string", title: "release (tag/branch) of avalanchego" }),
@@ -77,490 +82,511 @@ var ValidatorsSchema = ts_json_validator_1.createSchema({
     },
     required: ["release", "workDir", "baseStakingPort", "baseHttpPort", "hosts"],
 });
-function getDocker(config, id) {
-    return __awaiter(this, void 0, void 0, function () {
-        var h, host, sshConfig, docker;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    h = config.hosts[id];
-                    return [4 /*yield*/, dnsLookup(h.host)];
-                case 1:
-                    host = (_a.sent()).address;
-                    console.log("connecting to " + id + " (" + h.host + ": " + host + ")...");
-                    sshConfig = {
-                        host: host,
-                        username: h.username,
-                        privateKey: fs_1.default.readFileSync(h.privateKeyFile)
-                    };
-                    docker = new Docker({
-                        agent: sshModem(sshConfig),
-                    });
-                    return [2 /*return*/, { docker: docker, sshConfig: sshConfig, h: h, host: host }];
-            }
-        });
+var getDocker = function (config, id, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var h, host, sshConfig, docker;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                h = config.hosts[id];
+                return [4 /*yield*/, dnsLookup(h.host)];
+            case 1:
+                host = (_a.sent()).address;
+                log.write("connecting to " + id + " (" + h.host + ": " + host + ")...\n");
+                sshConfig = {
+                    host: host,
+                    username: h.username,
+                    privateKey: fs_1.default.readFileSync(h.privateKeyFile)
+                };
+                docker = new Docker({
+                    // eslint-disable-next-line
+                    agent: sshModem(sshConfig),
+                });
+                return [2 /*return*/, { docker: docker, sshConfig: sshConfig, h: h, host: host }];
+        }
     });
-}
-function run(config, id, stakerId) {
-    return __awaiter(this, void 0, void 0, function () {
-        var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, start, end, _loop_1, i;
-        var _this = this;
+}); };
+exports.getDocker = getDocker;
+var run = function (config, id, stakerId, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, start, end, _loop_1, i;
+    return __generator(this, function (_c) {
+        switch (_c.label) {
+            case 0: return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 1:
+                _a = _c.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h, host = _a.host;
+                _b = Set.bind;
+                return [4 /*yield*/, docker.listContainers({ all: true })];
+            case 2:
+                containers = new (_b.apply(Set, [void 0, (_c.sent()).map(function (e) { return e.Names[0]; })]))();
+                sshConn = new SSHPromise(sshConfig);
+                workDir = config.workDir;
+                start = 0;
+                end = h.validators.length;
+                if (stakerId) {
+                    start = h.validators.findIndex(function (e) { return e === stakerId; });
+                    if (start < 0) {
+                        return [2 /*return*/, false];
+                    }
+                    end = start + 1;
+                }
+                _loop_1 = function (i) {
+                    var v, name_1, stakingPort_1, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, _run;
+                    return __generator(this, function (_d) {
+                        switch (_d.label) {
+                            case 0:
+                                v = h.validators[i];
+                                name_1 = "a2v-" + v;
+                                if (!containers.has('/' + name_1)) return [3 /*break*/, 1];
+                                log.write("validator " + v + " already exists\n");
+                                return [3 /*break*/, 3];
+                            case 1:
+                                stakingPort_1 = config.baseStakingPort + i * 2;
+                                httpPort_1 = config.baseHttpPort + i * 2;
+                                affin_1 = [];
+                                cpuPerNode = h.cpuPerNode;
+                                cpuStride = h.cpuStride;
+                                for (j = i * cpuStride; j < i * cpuStride + cpuPerNode; j++) {
+                                    affin_1.push(j % h.ncpu);
+                                }
+                                exposedPorts_1 = {};
+                                portBindings_1 = {};
+                                exposedPorts_1[stakingPort_1 + "/tcp"] = {};
+                                exposedPorts_1[httpPort_1 + "/tcp"] = {};
+                                portBindings_1[stakingPort_1 + "/tcp"] = [{ HostPort: "" + stakingPort_1 }];
+                                portBindings_1[httpPort_1 + "/tcp"] = [{ HostPort: "" + httpPort_1 }];
+                                _run = function () { return __awaiter(void 0, void 0, void 0, function () {
+                                    var cmd, key, c;
+                                    return __generator(this, function (_a) {
+                                        switch (_a.label) {
+                                            case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir + "/" + v + "/")];
+                                            case 1:
+                                                _a.sent();
+                                                log.write("starting validator " + v + " on core " + affin_1.join(',') + "\n");
+                                                cmd = [
+                                                    './build/avalanchego',
+                                                    '--public-ip',
+                                                    "" + host,
+                                                    '--staking-port',
+                                                    "" + stakingPort_1,
+                                                    '--http-host', '0.0.0.0',
+                                                    '--http-port',
+                                                    "" + httpPort_1,
+                                                    '--staking-tls-cert-file',
+                                                    "/staking/" + v + ".crt",
+                                                    '--staking-tls-key-file',
+                                                    "/staking/" + v + ".key",
+                                                ];
+                                                key = tar_1.default.c({ cwd: './keys', prefix: './staking' }, [
+                                                    "./" + v + ".crt",
+                                                    "./" + v + ".key",
+                                                ]).pipe(fs_1.default.createWriteStream("./keys/" + v + ".tar"));
+                                                return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
+                                            case 2:
+                                                _a.sent();
+                                                return [4 /*yield*/, docker.createContainer({
+                                                        Image: "avaplatform/avalanchego:" + config.release,
+                                                        name: name_1,
+                                                        Cmd: cmd,
+                                                        Tty: true,
+                                                        ExposedPorts: exposedPorts_1,
+                                                        HostConfig: {
+                                                            AutoRemove: true,
+                                                            CpusetCpus: affin_1.join(','),
+                                                            Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
+                                                            PortBindings: portBindings_1,
+                                                            Binds: [workDir + "/" + v + "/:/root/.avalanchego:"],
+                                                        }
+                                                    })];
+                                            case 3:
+                                                c = _a.sent();
+                                                /* eslint-enable @typescript-eslint/naming-convention */
+                                                return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: '/' })];
+                                            case 4:
+                                                /* eslint-enable @typescript-eslint/naming-convention */
+                                                _a.sent();
+                                                return [4 /*yield*/, c.start().then(function () {
+                                                        log.write("started validator " + v + "\n");
+                                                    })];
+                                            case 5:
+                                                _a.sent();
+                                                return [2 /*return*/];
+                                        }
+                                    });
+                                }); };
+                                return [4 /*yield*/, _run()];
+                            case 2:
+                                _d.sent();
+                                _d.label = 3;
+                            case 3: return [2 /*return*/];
+                        }
+                    });
+                };
+                i = start;
+                _c.label = 3;
+            case 3:
+                if (!(i < end)) return [3 /*break*/, 6];
+                return [5 /*yield**/, _loop_1(i)];
+            case 4:
+                _c.sent();
+                _c.label = 5;
+            case 5:
+                i++;
+                return [3 /*break*/, 3];
+            case 6: 
+            // await Promise.all(pms);
+            return [4 /*yield*/, sshConn.close()];
+            case 7:
+                // await Promise.all(pms);
+                _c.sent();
+                return [2 /*return*/];
+        }
+    });
+}); };
+exports.run = run;
+var stop = function (config, id, stakerId, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var _a, docker, h, containers, start, end, _loop_2, i;
+    return __generator(this, function (_b) {
+        switch (_b.label) {
+            case 0: return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 1:
+                _a = _b.sent(), docker = _a.docker, h = _a.h;
+                return [4 /*yield*/, docker.listContainers()];
+            case 2:
+                containers = (_b.sent()).reduce(function (a, e) {
+                    a[e.Names[0]] = e.Id;
+                    return a;
+                }, {});
+                start = 0;
+                end = h.validators.length;
+                if (stakerId) {
+                    start = h.validators.findIndex(function (e) { return e === stakerId; });
+                    if (start < 0) {
+                        return [2 /*return*/, false];
+                    }
+                    end = start + 1;
+                }
+                _loop_2 = function (i) {
+                    var v, name_2, cid, pm;
+                    return __generator(this, function (_c) {
+                        switch (_c.label) {
+                            case 0:
+                                v = h.validators[i];
+                                name_2 = "a2v-" + v;
+                                cid = containers['/' + name_2];
+                                if (!cid) return [3 /*break*/, 2];
+                                log.write("stopping validator " + v + "\n");
+                                pm = docker.getContainer(cid).stop().then(function () {
+                                    log.write("stopped validator " + v + "\n");
+                                });
+                                return [4 /*yield*/, pm];
+                            case 1:
+                                _c.sent();
+                                _c.label = 2;
+                            case 2: return [2 /*return*/];
+                        }
+                    });
+                };
+                i = start;
+                _b.label = 3;
+            case 3:
+                if (!(i < end)) return [3 /*break*/, 6];
+                return [5 /*yield**/, _loop_2(i)];
+            case 4:
+                _b.sent();
+                _b.label = 5;
+            case 5:
+                i++;
+                return [3 /*break*/, 3];
+            case 6: 
+            // await Promise.all(pms);
+            return [2 /*return*/, true];
+        }
+    });
+}); };
+exports.stop = stop;
+var showValidators = function (config, id, stakerId, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var _a, docker, h, containers, start, end, i, v, name_3, e, ports;
+    return __generator(this, function (_b) {
+        switch (_b.label) {
+            case 0: return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 1:
+                _a = _b.sent(), docker = _a.docker, h = _a.h;
+                return [4 /*yield*/, docker.listContainers({ all: true })];
+            case 2:
+                containers = (_b.sent()).reduce(function (a, e) {
+                    a[e.Names[0]] = e;
+                    return a;
+                }, {});
+                start = 0;
+                end = h.validators.length;
+                if (stakerId) {
+                    start = h.validators.findIndex(function (e) { return e === stakerId; });
+                    if (start < 0) {
+                        return [2 /*return*/, false];
+                    }
+                    end = start + 1;
+                }
+                for (i = start; i < end; i++) {
+                    v = h.validators[i];
+                    name_3 = "a2v-" + v;
+                    e = containers['/' + name_3];
+                    if (e) {
+                        ports = e.Ports.map(function (_e) { return _e.PrivatePort + "->" + _e.PublicPort; }).join(',');
+                        log.write(v + ": id(" + e.Id + ") ports(" + ports + ") image(" + e.Image + ")\n");
+                    }
+                }
+                return [2 /*return*/, true];
+        }
+    });
+}); };
+exports.showValidators = showValidators;
+var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var branch, dockerhubRepo, remote, gopath, workprefix, avalancheClone, tarDockerFile, tag, key, docker;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                branch = config.release;
+                dockerhubRepo = 'avaplatform/avalanchego';
+                remote = 'https://github.com/ava-labs/avalanchego.git';
+                gopath = './.build_image_gopath';
+                workprefix = gopath + "/src/github.com/ava-labs";
+                shelljs_1.default.rm('-rf', workprefix);
+                avalancheClone = workprefix + "/avalanchego";
+                shelljs_1.default.exec('git config --global crendential.helper cache');
+                shelljs_1.default.exec("git clone \"" + remote + "\" \"" + avalancheClone + "\" --depth=1 -b " + branch);
+                shelljs_1.default.exec("sed -i 's/^.git$//g' \"" + avalancheClone + "/.dockerignore\"");
+                tarDockerFile = avalancheClone + "/avalanchego.tar";
+                tag = dockerhubRepo + ":" + branch;
+                key = tar_1.default.c({ cwd: avalancheClone }, [
+                    ".",
+                ]).pipe(fs_1.default.createWriteStream(tarDockerFile));
+                return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
+            case 1:
+                _a.sent();
+                return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 2:
+                docker = (_a.sent()).docker;
+                return [4 /*yield*/, new Promise(function (resolve, reject) {
+                        docker.buildImage(tarDockerFile, { t: tag }, function (err, output) {
+                            if (err) {
+                                reject(err);
+                            }
+                            if (output) {
+                                output.pipe(process.stdout, { end: true });
+                                output.on('end', resolve);
+                            }
+                        });
+                    })];
+            case 3:
+                _a.sent();
+                log.write("Finished building image " + tag + ".\n");
+                return [2 /*return*/];
+        }
+    });
+}); };
+exports.buildImage = buildImage;
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-misused-promises */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+var main = function () {
+    var getConfig = function (profile) {
+        return (new ts_json_validator_1.TsjsonParser(exports.validatorsSchema)).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
+    };
+    /* eslint-disable @typescript-eslint/no-unsafe-call */
+    /* eslint-disable @typescript-eslint/no-unsafe-return */
+    var getHostId = function (y) { return y.positional('hostid', {
+        type: 'string',
+        describe: 'Host ID'
+    }); };
+    var getHostStakerId = function (y) { return y.positional('hostid', {
+        type: 'string',
+        describe: 'Host ID'
+    }).positional('stakerid', {
+        type: 'string',
+        describe: 'Staker ID'
+    }); };
+    /* eslint-enable @typescript-eslint/no-unsafe-call */
+    /* eslint-enable @typescript-eslint/no-unsafe-return */
+    var log = process.stdout;
+    var die = function (s) {
+        process.stderr.write(s + "\n");
+        process.exit(1);
+    };
+    var wrapHandler = function (fn) {
+        return function (_argv) { return __awaiter(void 0, void 0, void 0, function () {
+            var e_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 2, , 3]);
+                        return [4 /*yield*/, fn(_argv)];
+                    case 1:
+                        _a.sent();
+                        return [3 /*break*/, 3];
+                    case 2:
+                        e_1 = _a.sent();
+                        die("error: " + e_1.message);
+                        return [3 /*break*/, 3];
+                    case 3: return [2 /*return*/];
+                }
+            });
+        }); };
+    };
+    yargs_1.default(helpers_1.hideBin(process.argv))
+        .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
-                case 0: return [4 /*yield*/, getDocker(config, id)];
+                case 0:
+                    if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
+                    config = getConfig(argv.profile);
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
                 case 1:
-                    _a = _c.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h, host = _a.host;
-                    _b = Set.bind;
-                    return [4 /*yield*/, docker.listContainers({ all: true })];
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, exports.run(config, id, null, log)];
                 case 2:
-                    containers = new (_b.apply(Set, [void 0, (_c.sent()).map(function (e) { return e.Names[0]; })]))();
-                    sshConn = new SSHPromise(sshConfig);
-                    workDir = config.workDir;
-                    start = 0;
-                    end = h.validators.length;
-                    if (stakerId) {
-                        start = h.validators.findIndex(function (e) { return e == stakerId; });
-                        if (start < 0) {
-                            return [2 /*return*/, false];
-                        }
-                        end = start + 1;
-                    }
-                    _loop_1 = function (i) {
-                        var v, name_1, stakingPort_1, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, start_1;
-                        return __generator(this, function (_d) {
-                            switch (_d.label) {
-                                case 0:
-                                    v = h.validators[i];
-                                    name_1 = "a2v-" + v;
-                                    if (!containers.has('/' + name_1)) return [3 /*break*/, 1];
-                                    console.log("validator " + v + " already exists");
-                                    return [3 /*break*/, 3];
-                                case 1:
-                                    stakingPort_1 = config.baseStakingPort + i * 2;
-                                    httpPort_1 = config.baseHttpPort + i * 2;
-                                    affin_1 = new Array();
-                                    cpuPerNode = h.cpuPerNode;
-                                    cpuStride = h.cpuStride;
-                                    for (j = i * cpuStride; j < i * cpuStride + cpuPerNode; j++) {
-                                        affin_1.push(j % h.ncpu);
-                                    }
-                                    exposedPorts_1 = {};
-                                    portBindings_1 = {};
-                                    exposedPorts_1[stakingPort_1 + "/tcp"] = {};
-                                    exposedPorts_1[httpPort_1 + "/tcp"] = {};
-                                    portBindings_1[stakingPort_1 + "/tcp"] = [{ HostPort: "" + stakingPort_1 }];
-                                    portBindings_1[httpPort_1 + "/tcp"] = [{ HostPort: "" + httpPort_1 }];
-                                    start_1 = function () { return __awaiter(_this, void 0, void 0, function () {
-                                        var cmd, key, c;
-                                        return __generator(this, function (_a) {
-                                            switch (_a.label) {
-                                                case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir + "/" + v + "/")];
-                                                case 1:
-                                                    _a.sent();
-                                                    console.log("starting validator " + v + " on core " + affin_1.join(','));
-                                                    cmd = [
-                                                        './build/avalanchego',
-                                                        '--public-ip',
-                                                        "" + host,
-                                                        '--staking-port',
-                                                        "" + stakingPort_1,
-                                                        '--http-host', '0.0.0.0',
-                                                        '--http-port',
-                                                        "" + httpPort_1,
-                                                        '--staking-tls-cert-file',
-                                                        "/staking/" + v + ".crt",
-                                                        '--staking-tls-key-file',
-                                                        "/staking/" + v + ".key",
-                                                    ];
-                                                    key = tar_1.default.c({ cwd: './keys', prefix: './staking' }, [
-                                                        "./" + v + ".crt",
-                                                        "./" + v + ".key",
-                                                    ]).pipe(fs_1.default.createWriteStream("./keys/" + v + ".tar"));
-                                                    return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
-                                                case 2:
-                                                    _a.sent();
-                                                    return [4 /*yield*/, docker.createContainer({
-                                                            Image: "avaplatform/avalanchego:" + config.release,
-                                                            name: name_1,
-                                                            Cmd: cmd,
-                                                            Tty: true,
-                                                            ExposedPorts: exposedPorts_1,
-                                                            HostConfig: {
-                                                                AutoRemove: true,
-                                                                CpusetCpus: affin_1.join(','),
-                                                                Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
-                                                                PortBindings: portBindings_1,
-                                                                Binds: [workDir + "/" + v + "/:/root/.avalanchego:"],
-                                                            }
-                                                        })];
-                                                case 3:
-                                                    c = _a.sent();
-                                                    return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: '/' })];
-                                                case 4:
-                                                    _a.sent();
-                                                    return [4 /*yield*/, c.start().then(function () {
-                                                            console.log("started validator " + v);
-                                                        })];
-                                                case 5:
-                                                    _a.sent();
-                                                    return [2 /*return*/];
-                                            }
-                                        });
-                                    }); };
-                                    return [4 /*yield*/, start_1()];
-                                case 2:
-                                    _d.sent();
-                                    _d.label = 3;
-                                case 3: return [2 /*return*/];
-                            }
-                        });
-                    };
-                    i = start;
+                    _c.sent();
                     _c.label = 3;
                 case 3:
-                    if (!(i < end)) return [3 /*break*/, 6];
-                    return [5 /*yield**/, _loop_1(i)];
-                case 4:
-                    _c.sent();
-                    _c.label = 5;
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [3 /*break*/, 7];
                 case 5:
-                    i++;
-                    return [3 /*break*/, 3];
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("run: host id \"" + argv.hostId + "\" not found");
+                    }
+                    return [4 /*yield*/, exports.run(config, argv.hostId, argv.stakerId, log)];
                 case 6:
-                    //await Promise.all(pms);
-                    sshConn.close();
-                    return [2 /*return*/];
+                    _c.sent();
+                    _c.label = 7;
+                case 7: return [2 /*return*/];
             }
         });
-    });
-}
-function stop(config, id, stakerId) {
-    return __awaiter(this, void 0, void 0, function () {
-        var _a, docker, sshConfig, h, containers, start, end, _loop_2, i;
-        return __generator(this, function (_b) {
-            switch (_b.label) {
-                case 0: return [4 /*yield*/, getDocker(config, id)];
-                case 1:
-                    _a = _b.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h;
-                    return [4 /*yield*/, docker.listContainers()];
-                case 2:
-                    containers = (_b.sent()).reduce(function (a, e) {
-                        a[e.Names[0]] = e.Id;
-                        return a;
-                    }, {});
-                    start = 0;
-                    end = h.validators.length;
-                    if (stakerId) {
-                        start = h.validators.findIndex(function (e) { return e == stakerId; });
-                        if (start < 0) {
-                            return [2 /*return*/, false];
-                        }
-                        end = start + 1;
-                    }
-                    _loop_2 = function (i) {
-                        var v, name_2, id_1, pm;
-                        return __generator(this, function (_c) {
-                            switch (_c.label) {
-                                case 0:
-                                    v = h.validators[i];
-                                    name_2 = "a2v-" + v;
-                                    id_1 = containers['/' + name_2];
-                                    if (!id_1) return [3 /*break*/, 2];
-                                    console.log("stopping validator " + v);
-                                    pm = docker.getContainer(id_1).stop().then(function () {
-                                        console.log("stopped validator " + v);
-                                    });
-                                    return [4 /*yield*/, pm];
-                                case 1:
-                                    _c.sent();
-                                    _c.label = 2;
-                                case 2: return [2 /*return*/];
-                            }
-                        });
-                    };
-                    i = start;
-                    _b.label = 3;
-                case 3:
-                    if (!(i < end)) return [3 /*break*/, 6];
-                    return [5 /*yield**/, _loop_2(i)];
-                case 4:
-                    _b.sent();
-                    _b.label = 5;
-                case 5:
-                    i++;
-                    return [3 /*break*/, 3];
-                case 6: 
-                //await Promise.all(pms);
-                return [2 /*return*/, true];
-            }
-        });
-    });
-}
-function showValidators(config, id, stakerId) {
-    return __awaiter(this, void 0, void 0, function () {
-        var _a, docker, sshConfig, h, containers, start, end, i, v, name_3, e, ports;
-        return __generator(this, function (_b) {
-            switch (_b.label) {
-                case 0: return [4 /*yield*/, getDocker(config, id)];
-                case 1:
-                    _a = _b.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h;
-                    return [4 /*yield*/, docker.listContainers({ all: true })];
-                case 2:
-                    containers = (_b.sent()).reduce(function (a, e) {
-                        a[e.Names[0]] = e;
-                        return a;
-                    }, {});
-                    start = 0;
-                    end = h.validators.length;
-                    if (stakerId) {
-                        start = h.validators.findIndex(function (e) { return e == stakerId; });
-                        if (start < 0) {
-                            return [2 /*return*/, false];
-                        }
-                        end = start + 1;
-                    }
-                    for (i = start; i < end; i++) {
-                        v = h.validators[i];
-                        name_3 = "a2v-" + v;
-                        e = containers['/' + name_3];
-                        if (e) {
-                            ports = e.Ports.map(function (e) { return e.PrivatePort + "->" + e.PublicPort; }).join(',');
-                            console.log(v + ": id(" + e.Id + ") ports(" + ports + ") image(" + e.Image + ")");
-                        }
-                    }
-                    return [2 /*return*/, true];
-            }
-        });
-    });
-}
-function buildImage(config, id) {
-    return __awaiter(this, void 0, void 0, function () {
-        var branch, dockerhubRepo, remote, gopath, workprefix, avalancheClone, tarDockerFile, tag, key, docker;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
+    }); })).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config, _a, _b, _i, id, config;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
                 case 0:
-                    branch = config.release;
-                    dockerhubRepo = 'avaplatform/avalanchego';
-                    remote = 'https://github.com/ava-labs/avalanchego.git';
-                    gopath = './.build_image_gopath';
-                    workprefix = gopath + "/src/github.com/ava-labs";
-                    shelljs_1.default.rm('-rf', workprefix);
-                    avalancheClone = workprefix + "/avalanchego";
-                    shelljs_1.default.exec('git config --global crendential.helper cache');
-                    shelljs_1.default.exec("git clone \"" + remote + "\" \"" + avalancheClone + "\" --depth=1 -b " + branch);
-                    shelljs_1.default.exec("sed -i 's/^.git$//g' \"" + avalancheClone + "/.dockerignore\"");
-                    tarDockerFile = avalancheClone + "/avalanchego.tar";
-                    tag = dockerhubRepo + ":" + branch;
-                    key = tar_1.default.c({ cwd: avalancheClone }, [
-                        ".",
-                    ]).pipe(fs_1.default.createWriteStream(tarDockerFile));
-                    return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
+                    if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
+                    config = getConfig(argv.profile);
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
                 case 1:
-                    _a.sent();
-                    return [4 /*yield*/, getDocker(config, id)];
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, exports.stop(config, id, null, log)];
                 case 2:
-                    docker = (_a.sent()).docker;
-                    return [4 /*yield*/, new Promise(function (resolve, reject) {
-                            docker.buildImage(tarDockerFile, { t: tag }, function (err, output) {
-                                if (err) {
-                                    console.error(err);
-                                    reject(err);
-                                }
-                                if (output) {
-                                    output.pipe(process.stdout, { end: true });
-                                    output.on('end', resolve);
-                                }
-                            });
-                        })];
+                    _c.sent();
+                    _c.label = 3;
                 case 3:
-                    _a.sent();
-                    console.log("Finished building image " + tag + ".");
-                    return [2 /*return*/];
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [3 /*break*/, 7];
+                case 5:
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("stop: host id \"" + argv.hostId + "\" not found");
+                    }
+                    return [4 /*yield*/, exports.stop(config, argv.hostId, argv.stakerId, log)];
+                case 6:
+                    _c.sent();
+                    _c.label = 7;
+                case 7: return [2 /*return*/];
             }
         });
-    });
-}
-function main() {
-    return __awaiter(this, void 0, void 0, function () {
-        var yargs, hideBin, getConfig, die, getHostId, getHostStakerId;
-        var _this = this;
-        return __generator(this, function (_a) {
-            yargs = require('yargs/yargs');
-            hideBin = require('yargs/helpers').hideBin;
-            getConfig = function (profile) {
-                return (new ts_json_validator_1.TsjsonParser(ValidatorsSchema)).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
-            };
-            die = function (s) {
-                process.stderr.write(s + "\n");
-                process.exit(1);
-            };
-            getHostId = function (yargs) { return yargs.positional('hostid', {
-                type: 'string',
-                describe: 'Host ID'
-            }); };
-            getHostStakerId = function (yargs) { return yargs.positional('hostid', {
-                type: 'string',
-                describe: 'Host ID'
-            }).positional('stakerid', {
-                type: 'string',
-                describe: 'Staker ID'
-            }); };
-            yargs(hideBin(process.argv))
-                .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
-                var config, _a, _b, _i, id, config;
-                return __generator(this, function (_c) {
-                    switch (_c.label) {
-                        case 0:
-                            if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
-                            config = getConfig(argv.profile);
-                            _a = [];
-                            for (_b in config.hosts)
-                                _a.push(_b);
-                            _i = 0;
-                            _c.label = 1;
-                        case 1:
-                            if (!(_i < _a.length)) return [3 /*break*/, 4];
-                            id = _a[_i];
-                            return [4 /*yield*/, run(config, id, null)];
-                        case 2:
-                            _c.sent();
-                            _c.label = 3;
-                        case 3:
-                            _i++;
-                            return [3 /*break*/, 1];
-                        case 4: return [3 /*break*/, 7];
-                        case 5:
-                            config = getConfig(argv.profile);
-                            if (!(argv.hostId in config.hosts)) {
-                                die("run: host id \"" + argv.hostId + "\" not found");
-                            }
-                            return [4 /*yield*/, run(config, argv.hostId, argv.stakerId)];
-                        case 6:
-                            _c.sent();
-                            _c.label = 7;
-                        case 7: return [2 /*return*/];
+    }); })).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config, _a, _b, _i, id, config;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
+                case 0:
+                    if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
+                    config = getConfig(argv.profile);
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
+                case 1:
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, exports.buildImage(config, id, log)];
+                case 2:
+                    _c.sent();
+                    _c.label = 3;
+                case 3:
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [3 /*break*/, 7];
+                case 5:
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("buildImage: host id \"" + argv.hostId + "\" not found");
                     }
-                });
-            }); }).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
-                var config, _a, _b, _i, id, config;
-                return __generator(this, function (_c) {
-                    switch (_c.label) {
-                        case 0:
-                            if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
-                            config = getConfig(argv.profile);
-                            _a = [];
-                            for (_b in config.hosts)
-                                _a.push(_b);
-                            _i = 0;
-                            _c.label = 1;
-                        case 1:
-                            if (!(_i < _a.length)) return [3 /*break*/, 4];
-                            id = _a[_i];
-                            return [4 /*yield*/, stop(config, id, null)];
-                        case 2:
-                            _c.sent();
-                            _c.label = 3;
-                        case 3:
-                            _i++;
-                            return [3 /*break*/, 1];
-                        case 4: return [3 /*break*/, 7];
-                        case 5:
-                            config = getConfig(argv.profile);
-                            if (!(argv.hostId in config.hosts)) {
-                                die("stop: host id \"" + argv.hostId + "\" not found");
-                            }
-                            return [4 /*yield*/, stop(config, argv.hostId, argv.stakerId)];
-                        case 6:
-                            _c.sent();
-                            _c.label = 7;
-                        case 7: return [2 /*return*/];
-                    }
-                });
-            }); }).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
-                var config, _a, _b, _i, id, config;
-                return __generator(this, function (_c) {
-                    switch (_c.label) {
-                        case 0:
-                            if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
-                            config = getConfig(argv.profile);
-                            _a = [];
-                            for (_b in config.hosts)
-                                _a.push(_b);
-                            _i = 0;
-                            _c.label = 1;
-                        case 1:
-                            if (!(_i < _a.length)) return [3 /*break*/, 4];
-                            id = _a[_i];
-                            return [4 /*yield*/, buildImage(config, id)];
-                        case 2:
-                            _c.sent();
-                            _c.label = 3;
-                        case 3:
-                            _i++;
-                            return [3 /*break*/, 1];
-                        case 4: return [3 /*break*/, 7];
-                        case 5:
-                            config = getConfig(argv.profile);
-                            if (!(argv.hostId in config.hosts)) {
-                                die("buildImage: host id \"" + argv.hostId + "\" not found");
-                            }
-                            return [4 /*yield*/, buildImage(config, argv.hostId)];
-                        case 6:
-                            _c.sent();
-                            _c.label = 7;
-                        case 7: return [2 /*return*/];
-                    }
-                });
-            }); }).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
-                var config, _a, _b, _i, id, config;
-                return __generator(this, function (_c) {
-                    switch (_c.label) {
-                        case 0:
-                            if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
-                            config = getConfig(argv.profile);
-                            _a = [];
-                            for (_b in config.hosts)
-                                _a.push(_b);
-                            _i = 0;
-                            _c.label = 1;
-                        case 1:
-                            if (!(_i < _a.length)) return [3 /*break*/, 4];
-                            id = _a[_i];
-                            return [4 /*yield*/, showValidators(config, id, null)];
-                        case 2:
-                            _c.sent();
-                            _c.label = 3;
-                        case 3:
-                            _i++;
-                            return [3 /*break*/, 1];
-                        case 4: return [3 /*break*/, 7];
-                        case 5:
-                            config = getConfig(argv.profile);
-                            if (!(argv.hostId in config.hosts)) {
-                                die("show: host id \"" + argv.hostId + "\" not found");
-                            }
-                            return [4 /*yield*/, showValidators(config, argv.hostId, argv.stakerId)];
-                        case 6:
-                            if (!(_c.sent())) {
-                                die("show: staker id \"" + argv.stakerId + "\" not found");
-                            }
-                            _c.label = 7;
-                        case 7: return [2 /*return*/];
-                    }
-                });
-            }); }).option('profile', {
-                alias: 'c',
-                type: 'string',
-                default: './validators.json',
-                description: 'JSON file that describes all validators'
-            })
-                .strict()
-                .showHelpOnFail(false, 'run with --help to see help information')
-                .argv;
-            return [2 /*return*/];
+                    return [4 /*yield*/, exports.buildImage(config, argv.hostId, log)];
+                case 6:
+                    _c.sent();
+                    _c.label = 7;
+                case 7: return [2 /*return*/];
+            }
         });
-    });
-}
+    }); })).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config, _a, _b, _i, id, config;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
+                case 0:
+                    if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
+                    config = getConfig(argv.profile);
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
+                case 1:
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, exports.showValidators(config, id, null, log)];
+                case 2:
+                    _c.sent();
+                    _c.label = 3;
+                case 3:
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [3 /*break*/, 7];
+                case 5:
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("show: host id \"" + argv.hostId + "\" not found");
+                    }
+                    return [4 /*yield*/, exports.showValidators(config, argv.hostId, argv.stakerId, log)];
+                case 6:
+                    if (!(_c.sent())) {
+                        die("show: staker id \"" + argv.stakerId + "\" not found");
+                    }
+                    _c.label = 7;
+                case 7: return [2 /*return*/];
+            }
+        });
+    }); })).option('profile', {
+        alias: 'c',
+        type: 'string',
+        default: './validators.json',
+        description: 'JSON file that describes all validators'
+    })
+        .strict()
+        .showHelpOnFail(false, 'run with --help to see help information')
+        .parse();
+};
+/* eslint-enable @typescript-eslint/no-unsafe-member-access */
+/* eslint-enable @typescript-eslint/no-misused-promises */
+/* eslint-enable @typescript-eslint/restrict-template-expressions */
 if (require.main === module) {
     main();
 }

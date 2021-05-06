@@ -1,8 +1,11 @@
 #!/usr/bin/env -S npx ts-node
 import Docker = require('dockerode');
 import SSHPromise = require('ssh2-promise');
+/* eslint-disable-next-line */
+/* eslint-disable no-underscore-dangle */
 const sshModem: any = require('docker-modem/lib/ssh');
-import util from "util";
+import util from 'util';
+import stream from 'stream';
 import dns from 'dns';
 import fs from 'fs';
 import tar from 'tar';
@@ -11,7 +14,10 @@ import shell from 'shelljs';
 import stripJsonComments from 'strip-json-comments';
 const dnsLookup = util.promisify(dns.lookup);
 
-const ValidatorsSchema = S({
+import yargs from 'yargs/yargs';
+import { hideBin } from 'yargs/helpers';
+
+export const validatorsSchema = S({
     type: "object",
     properties: {
         release: S({ type: "string", title: "release (tag/branch) of avalanchego" }),
@@ -38,62 +44,65 @@ const ValidatorsSchema = S({
     required: ["release", "workDir", "baseStakingPort", "baseHttpPort", "hosts"],
 });
 
-async function getDocker(config: Validated<typeof ValidatorsSchema>, id: string) {
+export const getDocker = async (config: Validated<typeof validatorsSchema>, id: string, log: stream.Writable) => {
     const h = config.hosts[id];
     const host = (await dnsLookup(h.host)).address;
-    console.log(`connecting to ${id} (${h.host}: ${host})...`);
+    log.write(`connecting to ${id} (${h.host}: ${host})...\n`);
     const sshConfig = {
-        host: host,
+        host,
         username: h.username,
         privateKey: fs.readFileSync(h.privateKeyFile)
     };
     const docker = new Docker({
+        // eslint-disable-next-line
         agent: sshModem(sshConfig),
     } as Docker.DockerOptions);
     return {docker, sshConfig, h, host};
 }
 
-async function run(config: Validated<typeof ValidatorsSchema>, id: string, stakerId: string | null) {
-    const {docker, sshConfig, h, host} = await getDocker(config, id);
-    let containers = new Set((await docker.listContainers({ all: true })).map(e => e.Names[0]));
+export const run = async (config: Validated<typeof validatorsSchema>, id: string, stakerId: string | null, log: stream.Writable) => {
+    const {docker, sshConfig, h, host} = await getDocker(config, id, log);
+    const containers = new Set((await docker.listContainers({ all: true })).map(e => e.Names[0]));
     const sshConn = new SSHPromise(sshConfig);
     const workDir = config.workDir;
 
     let start = 0;
     let end = h.validators.length;
     if (stakerId) {
-        start = h.validators.findIndex(e => e == stakerId);
+        start = h.validators.findIndex(e => e === stakerId);
         if (start < 0) {
             return false;
         }
         end = start + 1;
     }
 
-    //let pms = [];
+    // let pms = [];
     for (let i = start; i < end; i++) {
         const v = h.validators[i];
         const name = `a2v-${v}`;
         if (containers.has('/' + name)) {
-            console.log(`validator ${v} already exists`);
+            log.write(`validator ${v} already exists\n`);
         } else {
-            const stakingPort = config.baseStakingPort + i * 2;
-            const httpPort = config.baseHttpPort + i * 2;
-            const affin: [number] = new Array() as [number];
-            const cpuPerNode = h.cpuPerNode;
-            const cpuStride = h.cpuStride;
+            const stakingPort = config.baseStakingPort as number + i * 2;
+            const httpPort = config.baseHttpPort as number + i * 2;
+            const affin = [] as number[];
+            const cpuPerNode = h.cpuPerNode as number;
+            const cpuStride = h.cpuStride as number;
             for (let j = i * cpuStride; j < i * cpuStride + cpuPerNode; j++) {
                 affin.push(j % h.ncpu);
             }
-            const exposedPorts: {[key: string]: Object} = {};
-            const portBindings: {[key: string]: [Object]} = {};
+            /* eslint-disable @typescript-eslint/naming-convention */
+            const exposedPorts: {[key: string]: { [key: string]: Record<string, never>}} = {};
+            const portBindings: {[key: string]: [{ HostPort: string }]} = {};
             exposedPorts[`${stakingPort}/tcp`] = {};
             exposedPorts[`${httpPort}/tcp`] = {};
             portBindings[`${stakingPort}/tcp`] = [{ HostPort: `${stakingPort}` }];
             portBindings[`${httpPort}/tcp`] = [{ HostPort: `${httpPort}` }];
+            /* eslint-enable @typescript-eslint/naming-convention */
 
-            const start = async () => {
+            const _run = async () => {
                 await sshConn.exec(`mkdir -p ${workDir}/${v}/`);
-                console.log(`starting validator ${v} on core ${affin.join(',')}`);
+                log.write(`starting validator ${v} on core ${affin.join(',')}\n`);
                 const cmd = [
                     './build/avalanchego',
                     '--public-ip', `${host}`,
@@ -109,9 +118,10 @@ async function run(config: Validated<typeof ValidatorsSchema>, id: string, stake
                 ]).pipe(fs.createWriteStream(`./keys/${v}.tar`));
                 await new Promise(fulfill => key.on("finish", fulfill));
 
-                let c = await docker.createContainer({
-                    Image: `avaplatform/avalanchego:${config.release}`, 
-                    name: name,
+                /* eslint-disable @typescript-eslint/naming-convention */
+                const c = await docker.createContainer({
+                    Image: `avaplatform/avalanchego:${config.release}`,
+                    name,
                     Cmd: cmd,
                     Tty: true,
                     ExposedPorts: exposedPorts,
@@ -123,55 +133,56 @@ async function run(config: Validated<typeof ValidatorsSchema>, id: string, stake
                         Binds: [`${workDir}/${v}/:/root/.avalanchego:`],
                     }
                 });
+                /* eslint-enable @typescript-eslint/naming-convention */
                 await c.putArchive(`./keys/${v}.tar`, {path: '/' });
                 await c.start().then(() => {
-                    console.log(`started validator ${v}`);
+                    log.write(`started validator ${v}\n`);
                 });
             }
-            await start();
-            //pms.push(start());
+            await _run();
+            // pms.push(start());
         }
     }
-    //await Promise.all(pms);
-    sshConn.close();
+    // await Promise.all(pms);
+    await sshConn.close();
 }
 
-async function stop(config: Validated<typeof ValidatorsSchema>, id: string, stakerId: string | null) {
-    const {docker, sshConfig, h} = await getDocker(config, id);
-    let containers = (await docker.listContainers()).reduce((a: {[key: string]: string}, e) => {
+export const stop = async (config: Validated<typeof validatorsSchema>, id: string, stakerId: string | null, log: stream.Writable) => {
+    const {docker, h} = await getDocker(config, id, log);
+    const containers = (await docker.listContainers()).reduce((a: {[key: string]: string}, e) => {
         a[e.Names[0]] = e.Id;
         return a;
     }, {});
     let start = 0;
     let end = h.validators.length;
     if (stakerId) {
-        start = h.validators.findIndex(e => e == stakerId);
+        start = h.validators.findIndex(e => e === stakerId);
         if (start < 0) {
             return false;
         }
         end = start + 1;
     }
-    //let pms = [];
+    // let pms = [];
     for (let i = start; i < end; i++) {
         const v = h.validators[i];
         const name = `a2v-${v}`;
-        const id = containers['/' + name];
-        if (id) {
-            console.log(`stopping validator ${v}`);
-            let pm = docker.getContainer(id).stop().then(() => {
-                console.log(`stopped validator ${v}`);
+        const cid = containers['/' + name];
+        if (cid) {
+            log.write(`stopping validator ${v}\n`);
+            const pm = docker.getContainer(cid).stop().then(() => {
+                log.write(`stopped validator ${v}\n`);
             });
             await pm;
-            //pms.push(pm);
+            // pms.push(pm);
         }
     }
-    //await Promise.all(pms);
+    // await Promise.all(pms);
     return true;
 }
 
-async function showValidators(config: Validated<typeof ValidatorsSchema>, id: string, stakerId: string | null) {
-    const {docker, sshConfig, h} = await getDocker(config, id);
-    let containers = (await docker.listContainers({ all: true })).reduce((a: {[key: string]: Docker.ContainerInfo}, e) => {
+export const showValidators = async (config: Validated<typeof validatorsSchema>, id: string, stakerId: string | null, log: stream.Writable) => {
+    const {docker, h} = await getDocker(config, id, log);
+    const containers = (await docker.listContainers({ all: true })).reduce((a: {[key: string]: Docker.ContainerInfo}, e) => {
         a[e.Names[0]] = e;
         return a;
     }, {});
@@ -179,7 +190,7 @@ async function showValidators(config: Validated<typeof ValidatorsSchema>, id: st
     let start = 0;
     let end = h.validators.length;
     if (stakerId) {
-        start = h.validators.findIndex(e => e == stakerId);
+        start = h.validators.findIndex(e => e === stakerId);
         if (start < 0) {
             return false;
         }
@@ -190,17 +201,17 @@ async function showValidators(config: Validated<typeof ValidatorsSchema>, id: st
         const name = `a2v-${v}`;
         const e = containers['/' + name];
         if (e) {
-            const ports = e.Ports.map(e => `${e.PrivatePort}->${e.PublicPort}`).join(',');
-            console.log(`${v}: id(${e.Id}) ports(${ports}) image(${e.Image})`);
+            const ports = e.Ports.map(_e => `${_e.PrivatePort}->${_e.PublicPort}`).join(',');
+            log.write(`${v}: id(${e.Id}) ports(${ports}) image(${e.Image})\n`);
         }
     }
     return true;
 }
 
-async function buildImage(config: Validated<typeof ValidatorsSchema>, id: string) {
+export const buildImage = async (config: Validated<typeof validatorsSchema>, id: string, log: stream.Writable) => {
     const branch = config.release;
     const dockerhubRepo = 'avaplatform/avalanchego';
-    const remote = 'https://github.com/ava-labs/avalanchego.git'; 
+    const remote = 'https://github.com/ava-labs/avalanchego.git';
     const gopath = './.build_image_gopath';
     const workprefix = `${gopath}/src/github.com/ava-labs`;
     shell.rm('-rf', workprefix);
@@ -215,14 +226,13 @@ async function buildImage(config: Validated<typeof ValidatorsSchema>, id: string
     ]).pipe(fs.createWriteStream(tarDockerFile));
     await new Promise(fulfill => key.on("finish", fulfill));
 
-    const {docker} = await getDocker(config, id);
+    const {docker} = await getDocker(config, id, log);
     await new Promise((resolve, reject) => {
         docker.buildImage(
             tarDockerFile,
             {t: tag},
             (err, output) => {
                 if (err) {
-                    console.error(err)
                     reject(err)
                 }
                 if (output) {
@@ -232,51 +242,63 @@ async function buildImage(config: Validated<typeof ValidatorsSchema>, id: string
             }
         )
     })
-    console.log(`Finished building image ${tag}.`);
+    log.write(`Finished building image ${tag}.\n`);
 }
 
-async function main() {
-    const yargs = require('yargs/yargs')
-    const { hideBin } = require('yargs/helpers')
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-misused-promises */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+const main = () => {
     const getConfig = (profile: string) =>
-        (new TsjsonParser(ValidatorsSchema)).parse(stripJsonComments(
+        (new TsjsonParser(validatorsSchema)).parse(stripJsonComments(
             fs.readFileSync(profile).toString()));
-    const die = (s: string) => {
-        process.stderr.write(`${s}\n`);
-        process.exit(1);
-    };
-    const getHostId = (yargs: any) => yargs.positional('hostid', {
+    /* eslint-disable @typescript-eslint/no-unsafe-call */
+    /* eslint-disable @typescript-eslint/no-unsafe-return */
+    const getHostId = (y: any) => y.positional('hostid', {
         type: 'string',
         describe: 'Host ID'
     });
-    const getHostStakerId = (yargs: any) => yargs.positional('hostid', {
+    const getHostStakerId = (y: any) => y.positional('hostid', {
         type: 'string',
         describe: 'Host ID'
     }).positional('stakerid', {
         type: 'string',
         describe: 'Staker ID'
     });
-
+    /* eslint-enable @typescript-eslint/no-unsafe-call */
+    /* eslint-enable @typescript-eslint/no-unsafe-return */
+    const log = process.stdout;
+    const die = (s: string) => {
+        process.stderr.write(`${s}\n`);
+        process.exit(1);
+    };
+    const wrapHandler = (fn: (argv: any) => Promise<void>) => {
+        return async (_argv: any) => {
+            try { await fn(_argv); } catch (e) {
+                die(`error: ${(e as Error).message}`);
+            }
+        };
+    };
 
     yargs(hideBin(process.argv))
-        .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, async (argv: any) => {
+        .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
-                    await run(config, id, null);
+                    await run(config, id, null, log);
                 }
             } else {
                 const config = getConfig(argv.profile);
                 if (!(argv.hostId in config.hosts)) {
                     die(`run: host id "${argv.hostId}" not found`);
                 }
-                await run(config, argv.hostId, argv.stakerId);
+                await run(config, argv.hostId, argv.stakerId, log);
             }
-        }).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, async (argv: any) => {
+        })).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
-                    await stop(config, id, null);
+                    await stop(config, id, null, log);
                 }
             } else {
                 const config = getConfig(argv.profile);
@@ -284,13 +306,13 @@ async function main() {
                     die(`stop: host id "${argv.hostId}" not found`);
 
                 }
-                await stop(config, argv.hostId, argv.stakerId);
+                await stop(config, argv.hostId, argv.stakerId, log);
             }
-        }).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, async (argv: any) => {
+        })).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
-                    await buildImage(config, id);
+                    await buildImage(config, id, log);
                 }
             } else {
                 const config = getConfig(argv.profile);
@@ -298,13 +320,13 @@ async function main() {
                     die(`buildImage: host id "${argv.hostId}" not found`);
 
                 }
-                await buildImage(config, argv.hostId);
+                await buildImage(config, argv.hostId, log);
             }
-        }).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, async (argv: any) => {
+        })).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
-                    await showValidators(config, id, null);
+                    await showValidators(config, id, null, log);
                 }
             } else {
                 const config = getConfig(argv.profile);
@@ -312,11 +334,11 @@ async function main() {
                     die(`show: host id "${argv.hostId}" not found`);
 
                 }
-                if (!await showValidators(config, argv.hostId, argv.stakerId)) {
+                if (!await showValidators(config, argv.hostId, argv.stakerId, log)) {
                     die(`show: staker id "${argv.stakerId}" not found`);
                 }
             }
-        }).option('profile', {
+        })).option('profile', {
             alias: 'c',
             type: 'string',
             default: './validators.json',
@@ -324,9 +346,12 @@ async function main() {
         })
         .strict()
         .showHelpOnFail(false, 'run with --help to see help information')
-        .argv;
+        .parse();
 }
+/* eslint-enable @typescript-eslint/no-unsafe-member-access */
+/* eslint-enable @typescript-eslint/no-misused-promises */
+/* eslint-enable @typescript-eslint/restrict-template-expressions */
 
 if (require.main === module) {
-    main();
+    main()
 }
