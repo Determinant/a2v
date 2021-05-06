@@ -1,14 +1,21 @@
 {
   "dependencies": {
     "dockerode": "^3.3.0",
+    "shelljs": "^0.8.4",
     "ssh2-promise": "^0.1.7",
-    "tar": "^6.1.0"
+    "tar": "^6.1.0",
+    "ts-json-validator": "^0.7.1",
+    "yargs": "^17.0.1"
   },
   "devDependencies": {
     "@types/dockerode": "^3.2.3",
     "@types/node": "^15.0.2",
+    "@types/shelljs": "^0.8.8",
     "@types/tar": "^4.0.4",
     "ts-node": "^9.1.1",
     "typescript": "^4.2.4"
+  },
+  "scripts": {
+    "build": "npx tsc && sed -i 's=#!/usr/bin/env .*=#!/usr/bin/env node=g' a2v.js && chmod +x a2v.js"
   }
 }

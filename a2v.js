@@ -1,24 +1,5 @@
-#!/usr/bin/env -S npx ts-node
+#!/usr/bin/env node
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -55,33 +36,79 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 var Docker = require("dockerode");
 var SSHPromise = require("ssh2-promise");
 var sshModem = require('docker-modem/lib/ssh');
-var fs = __importStar(require("fs"));
-var tar = __importStar(require("tar"));
-function startAll() {
+var util_1 = __importDefault(require("util"));
+var dns_1 = __importDefault(require("dns"));
+var fs_1 = __importDefault(require("fs"));
+var tar_1 = __importDefault(require("tar"));
+var ts_json_validator_1 = require("ts-json-validator");
+var shelljs_1 = __importDefault(require("shelljs"));
+var dnsLookup = util_1.default.promisify(dns_1.default.lookup);
+var ValidatorsSchema = ts_json_validator_1.createSchema({
+    type: "object",
+    properties: {
+        release: ts_json_validator_1.createSchema({ type: "string", title: "release (tag/branch) of avalanchego" }),
+        workDir: ts_json_validator_1.createSchema({ type: "string", title: "working directory (databases and logs) on the host system used by validators" }),
+        baseStakingPort: ts_json_validator_1.createSchema({ type: "number", title: "base port number for staking/voting" }),
+        baseHttpPort: ts_json_validator_1.createSchema({ type: "number", title: "base port number for JSON/RPC" }),
+        hosts: ts_json_validator_1.createSchema({
+            type: "object",
+            additionalProperties: ts_json_validator_1.createSchema({
+                type: "object",
+                properties: {
+                    host: ts_json_validator_1.createSchema({ type: "string" }),
+                    username: ts_json_validator_1.createSchema({ type: "string" }),
+                    privateKeyFile: ts_json_validator_1.createSchema({ type: "string" }),
+                    validators: ts_json_validator_1.createSchema({ type: "array", items: ts_json_validator_1.createSchema({ type: "string" }) }),
+                    ncpu: ts_json_validator_1.createSchema({ type: "number" }),
+                    cpuPerNode: ts_json_validator_1.createSchema({ type: "number" }),
+                    cpuStride: ts_json_validator_1.createSchema({ type: "number" }),
+                },
+                required: ["host", "username", "privateKeyFile", "validators", "ncpu", "cpuPerNode", "cpuStride"]
+            })
+        }),
+    },
+    required: ["release", "workDir", "baseStakingPort", "baseHttpPort", "hosts"],
+});
+function getDocker(config, id) {
     return __awaiter(this, void 0, void 0, function () {
-        var config, _i, _a, h, sshConfig, docker, containers, _b, sshConn, workDir, _loop_1, i;
-        return __generator(this, function (_c) {
-            switch (_c.label) {
+        var h, host, sshConfig, docker;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
                 case 0:
-                    config = JSON.parse(fs.readFileSync('./validators.json').toString());
-                    _i = 0, _a = config.hosts;
-                    _c.label = 1;
+                    h = config.hosts[id];
+                    return [4 /*yield*/, dnsLookup(h.host)];
                 case 1:
-                    if (!(_i < _a.length)) return [3 /*break*/, 8];
-                    h = _a[_i];
-                    console.log("connecting to " + h.host + "...");
+                    host = (_a.sent()).address;
+                    console.log("connecting to " + id + " (" + h.host + ": " + host + ")...");
                     sshConfig = {
-                        host: h.host,
+                        host: host,
                         username: h.username,
-                        privateKey: fs.readFileSync(h.privateKeyFile)
+                        privateKey: fs_1.default.readFileSync(h.privateKeyFile)
                     };
                     docker = new Docker({
-                        agent: sshModem(sshConfig)
+                        agent: sshModem(sshConfig),
                     });
+                    return [2 /*return*/, { docker: docker, sshConfig: sshConfig, h: h, host: host }];
+            }
+        });
+    });
+}
+function run(config, id) {
+    return __awaiter(this, void 0, void 0, function () {
+        var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, _loop_1, i;
+        var _this = this;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
+                case 0: return [4 /*yield*/, getDocker(config, id)];
+                case 1:
+                    _a = _c.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h, host = _a.host;
                     _b = Set.bind;
                     return [4 /*yield*/, docker.listContainers()];
                 case 2:
@@ -89,7 +116,7 @@ function startAll() {
                     sshConn = new SSHPromise(sshConfig);
                     workDir = config.workDir;
                     _loop_1 = function (i) {
-                        var v, name_1, stakingPort, httpPort, affin, cpuPerNode, cpuStride, j, exposedPorts, portBindings, cmd, key_1, c;
+                        var v, name_1, stakingPort_1, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, start;
                         return __generator(this, function (_d) {
                             switch (_d.label) {
                                 case 0:
@@ -97,73 +124,84 @@ function startAll() {
                                     name_1 = "a2v-" + v;
                                     if (!containers.has('/' + name_1)) return [3 /*break*/, 1];
                                     console.log("validator " + v + " already exists");
-                                    return [3 /*break*/, 7];
+                                    return [3 /*break*/, 3];
                                 case 1:
-                                    stakingPort = config.baseStakingPort + i * 2;
-                                    httpPort = config.baseHttpPort + i * 2;
-                                    affin = [];
+                                    stakingPort_1 = config.baseStakingPort + i * 2;
+                                    httpPort_1 = config.baseHttpPort + i * 2;
+                                    affin_1 = new Array();
                                     cpuPerNode = h.cpuPerNode;
                                     cpuStride = h.cpuStride;
                                     for (j = i * cpuStride; j < i * cpuStride + cpuPerNode; j++) {
-                                        affin.push(j % h.ncpu);
+                                        affin_1.push(j % h.ncpu);
                                     }
-                                    exposedPorts = {};
-                                    portBindings = {};
-                                    exposedPorts[stakingPort + "/tcp"] = {};
-                                    exposedPorts[httpPort + "/tcp"] = {};
-                                    portBindings[stakingPort + "/tcp"] = [{ HostPort: "" + stakingPort }];
-                                    portBindings[httpPort + "/tcp"] = [{ HostPort: "" + httpPort }];
-                                    return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir + "/" + v + "/")];
+                                    exposedPorts_1 = {};
+                                    portBindings_1 = {};
+                                    exposedPorts_1[stakingPort_1 + "/tcp"] = {};
+                                    exposedPorts_1[httpPort_1 + "/tcp"] = {};
+                                    portBindings_1[stakingPort_1 + "/tcp"] = [{ HostPort: "" + stakingPort_1 }];
+                                    portBindings_1[httpPort_1 + "/tcp"] = [{ HostPort: "" + httpPort_1 }];
+                                    start = function () { return __awaiter(_this, void 0, void 0, function () {
+                                        var cmd, key, c;
+                                        return __generator(this, function (_a) {
+                                            switch (_a.label) {
+                                                case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir + "/" + v + "/")];
+                                                case 1:
+                                                    _a.sent();
+                                                    console.log("starting validator " + v + " on core " + affin_1.join(','));
+                                                    cmd = [
+                                                        './build/avalanchego',
+                                                        '--public-ip',
+                                                        "" + host,
+                                                        '--staking-port',
+                                                        "" + stakingPort_1,
+                                                        '--http-host', '0.0.0.0',
+                                                        '--http-port',
+                                                        "" + httpPort_1,
+                                                        '--staking-tls-cert-file',
+                                                        "/staking/" + v + ".crt",
+                                                        '--staking-tls-key-file',
+                                                        "/staking/" + v + ".key",
+                                                    ];
+                                                    key = tar_1.default.c({ cwd: './keys', prefix: './staking' }, [
+                                                        "./" + v + ".crt",
+                                                        "./" + v + ".key",
+                                                    ]).pipe(fs_1.default.createWriteStream("./keys/" + v + ".tar"));
+                                                    return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
+                                                case 2:
+                                                    _a.sent();
+                                                    return [4 /*yield*/, docker.createContainer({
+                                                            Image: "avaplatform/avalanchego:" + config.release,
+                                                            name: name_1,
+                                                            Cmd: cmd,
+                                                            Tty: true,
+                                                            ExposedPorts: exposedPorts_1,
+                                                            HostConfig: {
+                                                                AutoRemove: true,
+                                                                CpusetCpus: affin_1.join(','),
+                                                                Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
+                                                                PortBindings: portBindings_1,
+                                                                Binds: [workDir + "/" + v + "/:/root/.avalanchego:"],
+                                                            }
+                                                        })];
+                                                case 3:
+                                                    c = _a.sent();
+                                                    return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: '/' })];
+                                                case 4:
+                                                    _a.sent();
+                                                    return [4 /*yield*/, c.start().then(function () {
+                                                            console.log("started validator " + v);
+                                                        })];
+                                                case 5:
+                                                    _a.sent();
+                                                    return [2 /*return*/];
+                                            }
+                                        });
+                                    }); };
+                                    return [4 /*yield*/, start()];
                                 case 2:
                                     _d.sent();
-                                    console.log("starting validator " + v + " on core " + affin.join(','));
-                                    cmd = [
-                                        './build/avalanchego',
-                                        '--public-ip',
-                                        "" + h.host,
-                                        '--staking-port',
-                                        "" + stakingPort,
-                                        '--http-host', '0.0.0.0',
-                                        '--http-port',
-                                        "" + httpPort,
-                                        '--staking-tls-cert-file',
-                                        "/staking/" + v + ".crt",
-                                        '--staking-tls-key-file',
-                                        "/staking/" + v + ".key",
-                                    ];
-                                    key_1 = tar.c({ cwd: './keys', prefix: './staking' }, [
-                                        "./" + v + ".crt",
-                                        "./" + v + ".key",
-                                    ]).pipe(fs.createWriteStream("./keys/" + v + ".tar"));
-                                    return [4 /*yield*/, new Promise(function (fulfill) { return key_1.on("finish", fulfill); })];
-                                case 3:
-                                    _d.sent();
-                                    return [4 /*yield*/, docker.createContainer({
-                                            Image: "avaplatform/avalanchego:" + config.release,
-                                            name: name_1,
-                                            Tty: true,
-                                            Cmd: cmd,
-                                            ExposedPorts: exposedPorts,
-                                            HostConfig: {
-                                                AutoRemove: true,
-                                                CpusetCpus: affin.join(','),
-                                                Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
-                                                PortBindings: portBindings,
-                                                Binds: [workDir + "/" + v + "/:/root/.avalanchego:"],
-                                            }
-                                        })];
-                                case 4:
-                                    c = _d.sent();
-                                    return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: '/' })];
-                                case 5:
-                                    _d.sent();
-                                    return [4 /*yield*/, c.start({
-                                            Detach: true,
-                                        })];
-                                case 6:
-                                    _d.sent();
-                                    _d.label = 7;
-                                case 7: return [2 /*return*/];
+                                    _d.label = 3;
+                                case 3: return [2 /*return*/];
                             }
                         });
                     };
@@ -179,15 +217,225 @@ function startAll() {
                     i++;
                     return [3 /*break*/, 3];
                 case 6:
+                    //await Promise.all(pms);
                     sshConn.close();
-                    _c.label = 7;
-                case 7:
-                    _i++;
-                    return [3 /*break*/, 1];
-                case 8: return [2 /*return*/];
+                    return [2 /*return*/];
             }
         });
     });
 }
-startAll();
+function stop(config, id) {
+    return __awaiter(this, void 0, void 0, function () {
+        var _a, docker, sshConfig, h, containers, _loop_2, i;
+        return __generator(this, function (_b) {
+            switch (_b.label) {
+                case 0: return [4 /*yield*/, getDocker(config, id)];
+                case 1:
+                    _a = _b.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h;
+                    return [4 /*yield*/, docker.listContainers()];
+                case 2:
+                    containers = (_b.sent()).reduce(function (a, e) {
+                        a[e.Names[0]] = e.Id;
+                        return a;
+                    }, {});
+                    _loop_2 = function (i) {
+                        var v, name_2, id_1, pm;
+                        return __generator(this, function (_c) {
+                            switch (_c.label) {
+                                case 0:
+                                    v = h.validators[i];
+                                    name_2 = "a2v-" + v;
+                                    id_1 = containers['/' + name_2];
+                                    if (!id_1) return [3 /*break*/, 2];
+                                    console.log("stopping validator " + v);
+                                    pm = docker.getContainer(id_1).stop().then(function () {
+                                        console.log("stopped validator " + v);
+                                    });
+                                    return [4 /*yield*/, pm];
+                                case 1:
+                                    _c.sent();
+                                    _c.label = 2;
+                                case 2: return [2 /*return*/];
+                            }
+                        });
+                    };
+                    i = 0;
+                    _b.label = 3;
+                case 3:
+                    if (!(i < h.validators.length)) return [3 /*break*/, 6];
+                    return [5 /*yield**/, _loop_2(i)];
+                case 4:
+                    _b.sent();
+                    _b.label = 5;
+                case 5:
+                    i++;
+                    return [3 /*break*/, 3];
+                case 6: return [2 /*return*/];
+            }
+        });
+    });
+}
+function runAll(config) {
+    return __awaiter(this, void 0, void 0, function () {
+        var _a, _b, _i, id;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
+                case 0:
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
+                case 1:
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, run(config, id)];
+                case 2:
+                    _c.sent();
+                    _c.label = 3;
+                case 3:
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [2 /*return*/];
+            }
+        });
+    });
+}
+function buildImage(config, id) {
+    return __awaiter(this, void 0, void 0, function () {
+        var branch, dockerhubRepo, remote, gopath, workprefix, avalancheClone, tarDockerFile, tag, key, docker;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    branch = config.release;
+                    dockerhubRepo = 'avaplatform/avalanchego';
+                    remote = 'https://github.com/ava-labs/avalanchego.git';
+                    gopath = './.build_image_gopath';
+                    workprefix = gopath + "/src/github.com/ava-labs";
+                    shelljs_1.default.rm('-rf', workprefix);
+                    avalancheClone = workprefix + "/avalanchego";
+                    shelljs_1.default.exec('git config --global crendential.helper cache');
+                    shelljs_1.default.exec("git clone \"" + remote + "\" \"" + avalancheClone + "\" --depth=1 -b " + branch);
+                    shelljs_1.default.exec("sed -i 's/^.git$//g' \"" + avalancheClone + "/.dockerignore\"");
+                    tarDockerFile = avalancheClone + "/avalanchego.tar";
+                    tag = dockerhubRepo + ":" + branch;
+                    key = tar_1.default.c({ cwd: avalancheClone }, [
+                        ".",
+                    ]).pipe(fs_1.default.createWriteStream(tarDockerFile));
+                    return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
+                case 1:
+                    _a.sent();
+                    return [4 /*yield*/, getDocker(config, id)];
+                case 2:
+                    docker = (_a.sent()).docker;
+                    return [4 /*yield*/, new Promise(function (resolve, reject) {
+                            docker.buildImage(tarDockerFile, { t: tag }, function (err, output) {
+                                if (err) {
+                                    console.error(err);
+                                    reject(err);
+                                }
+                                if (output) {
+                                    output.pipe(process.stdout, { end: true });
+                                    output.on('end', resolve);
+                                }
+                            });
+                        })];
+                case 3:
+                    _a.sent();
+                    console.log("Finished building image " + tag + ".");
+                    return [2 /*return*/];
+            }
+        });
+    });
+}
+function main() {
+    return __awaiter(this, void 0, void 0, function () {
+        var yargs, hideBin, getConfig, die, getHostId;
+        var _this = this;
+        return __generator(this, function (_a) {
+            yargs = require('yargs/yargs');
+            hideBin = require('yargs/helpers').hideBin;
+            getConfig = function (profile) { return (new ts_json_validator_1.TsjsonParser(ValidatorsSchema)).parse(fs_1.default.readFileSync(profile).toString()); };
+            die = function (s) {
+                process.stderr.write(s + "\n");
+                process.exit(1);
+            };
+            getHostId = function (yargs) { return yargs.positional('hostid', {
+                type: 'string',
+                describe: 'Host ID'
+            }); };
+            yargs(hideBin(process.argv))
+                .command('run [host-id]', 'start the containers on the given host', getHostId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
+                var config;
+                return __generator(this, function (_a) {
+                    switch (_a.label) {
+                        case 0:
+                            if (!(argv.hostId === undefined)) return [3 /*break*/, 1];
+                            runAll(getConfig(argv.profile));
+                            return [3 /*break*/, 3];
+                        case 1:
+                            config = getConfig(argv.profile);
+                            if (!(argv.hostId in config.hosts)) {
+                                die("run: host id \"" + argv.hostId + "\" not found");
+                            }
+                            return [4 /*yield*/, run(config, argv.hostId)];
+                        case 2:
+                            _a.sent();
+                            _a.label = 3;
+                        case 3: return [2 /*return*/];
+                    }
+                });
+            }); }).command('stop [host-id]', 'stop the containers on the given host', getHostId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
+                var config;
+                return __generator(this, function (_a) {
+                    switch (_a.label) {
+                        case 0:
+                            if (!(argv.hostId === undefined)) return [3 /*break*/, 1];
+                            return [3 /*break*/, 3];
+                        case 1:
+                            config = getConfig(argv.profile);
+                            if (!(argv.hostId in config.hosts)) {
+                                die("stop: host id \"" + argv.hostId + "\" not found");
+                            }
+                            return [4 /*yield*/, stop(config, argv.hostId)];
+                        case 2:
+                            _a.sent();
+                            _a.label = 3;
+                        case 3: return [2 /*return*/];
+                    }
+                });
+            }); }).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, function (argv) { return __awaiter(_this, void 0, void 0, function () {
+                var config;
+                return __generator(this, function (_a) {
+                    switch (_a.label) {
+                        case 0:
+                            if (!(argv.hostId === undefined)) return [3 /*break*/, 1];
+                            return [3 /*break*/, 3];
+                        case 1:
+                            config = getConfig(argv.profile);
+                            if (!(argv.hostId in config.hosts)) {
+                                die("buildImage: host id \"" + argv.hostId + "\" not found");
+                            }
+                            return [4 /*yield*/, buildImage(config, argv.hostId)];
+                        case 2:
+                            _a.sent();
+                            _a.label = 3;
+                        case 3: return [2 /*return*/];
+                    }
+                });
+            }); }).option('profile', {
+                alias: 'c',
+                type: 'string',
+                default: './validators.json',
+                description: 'JSON file that describes all validators'
+            })
+                .showHelpOnFail(false, 'run with --help to see help information')
+                .argv;
+            return [2 /*return*/];
+        });
+    });
+}
+if (require.main === module) {
+    main();
+}
 //# sourceMappingURL=a2v.js.map

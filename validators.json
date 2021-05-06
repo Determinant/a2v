@@ -1,23 +1,26 @@
 {
-    "release": "v1.4.1",
+    "release": "v1.3.2",
     "workDir": "/bigboy/stakers",
     "baseStakingPort": 9851,
     "baseHttpPort": 9850,
-    "hosts": [{
-        "host": "avax-host-1",
-        "username": "ubuntu",
-        "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
-        "validators": ["staker0", "staker1", "staker2", "staker3"],
-        "ncpu": 8,
-        "cpuPerNode": 3,
-        "cpuStride": 2
-    },{
-        "host": "avax-host-2",
-        "username": "ubuntu",
-        "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
-        "validators": ["staker8", "staker9", "staker10"],
-        "ncpu": 8,
-        "cpuPerNode": 3,
-        "cpuStride": 2
-    }]
+    "hosts": {
+        "docker1": {
+            "host": "avax-host-1",
+            "username": "ubuntu",
+            "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
+            "validators": ["staker0", "staker1", "staker2", "staker3"],
+            "ncpu": 8,
+            "cpuPerNode": 3,
+            "cpuStride": 2
+        },
+        "docker2": {
+            "host": "avax-host-2",
+            "username": "ubuntu",
+            "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
+            "validators": ["staker8", "staker9", "staker10"],
+            "ncpu": 8,
+            "cpuPerNode": 3,
+            "cpuStride": 2
+        }
+    }
 }
