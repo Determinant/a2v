@@ -13,7 +13,8 @@ Features
 How to Use
 ==========
 
-- First make sure you have one or more Docker hosts (servers) running, with SSH access to the servers:
+- First make sure you have one or more Docker hosts (servers) running, with SSH access of them:
+
   - An example is to launch an Ubuntu instance on AWS EC2;
   - install ``sudo apt update && sudo apt install docker.io``;
   - add ``ubuntu`` to ``docker`` group: ``sudo gpasswd -a ubuntu docker``;
