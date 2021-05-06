@@ -1,5 +1,5 @@
 {
-    "release": "v1.3.2",
+    "release": "v1.4.1",
     "workDir": "/bigboy/stakers",
     "baseStakingPort": 9851,
     "baseHttpPort": 9850,
