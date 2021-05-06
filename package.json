@@ -31,6 +31,7 @@
         "a2v": "./a2v.js"
     },
     "scripts": {
-        "build": "npx tsc && sed -i 's=#!/usr/bin/env .*=#!/usr/bin/env node=g' a2v.js && chmod +x a2v.js"
+        "build": "npx tsc && sed -i 's=#!/usr/bin/env .*=#!/usr/bin/env node=g' a2v.js && chmod +x a2v.js",
+        "lint": "eslint . --ext .ts"
     }
 }

@@ -40,11 +40,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.getDocker = exports.validatorsSchema = void 0;
+exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.validatorsSchema = void 0;
 var Docker = require("dockerode");
 var SSHPromise = require("ssh2-promise");
 /* eslint-disable-next-line */
-/* eslint-disable no-underscore-dangle */
 var sshModem = require('docker-modem/lib/ssh');
 var util_1 = __importDefault(require("util"));
 var dns_1 = __importDefault(require("dns"));
@@ -105,12 +104,11 @@ var getDocker = function (config, id, log) { return __awaiter(void 0, void 0, vo
         }
     });
 }); };
-exports.getDocker = getDocker;
-var run = function (config, id, stakerId, log) { return __awaiter(void 0, void 0, void 0, function () {
+var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, void 0, function () {
     var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, start, end, _loop_1, i;
     return __generator(this, function (_c) {
         switch (_c.label) {
-            case 0: return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 0: return [4 /*yield*/, getDocker(config, id, log)];
             case 1:
                 _a = _c.sent(), docker = _a.docker, sshConfig = _a.sshConfig, h = _a.h, host = _a.host;
                 _b = Set.bind;
@@ -121,8 +119,8 @@ var run = function (config, id, stakerId, log) { return __awaiter(void 0, void 0
                 workDir = config.workDir;
                 start = 0;
                 end = h.validators.length;
-                if (stakerId) {
-                    start = h.validators.findIndex(function (e) { return e === stakerId; });
+                if (nodeId) {
+                    start = h.validators.findIndex(function (e) { return e === nodeId; });
                     if (start < 0) {
                         return [2 /*return*/, false];
                     }
@@ -212,8 +210,10 @@ var run = function (config, id, stakerId, log) { return __awaiter(void 0, void 0
                                         }
                                     });
                                 }); };
+                                /* eslint-enable no-underscore-dangle */
                                 return [4 /*yield*/, _run()];
                             case 2:
+                                /* eslint-enable no-underscore-dangle */
                                 _d.sent();
                                 _d.label = 3;
                             case 3: return [2 /*return*/];
@@ -237,16 +237,16 @@ var run = function (config, id, stakerId, log) { return __awaiter(void 0, void 0
             case 7:
                 // await Promise.all(pms);
                 _c.sent();
-                return [2 /*return*/];
+                return [2 /*return*/, true];
         }
     });
 }); };
 exports.run = run;
-var stop = function (config, id, stakerId, log) { return __awaiter(void 0, void 0, void 0, function () {
+var stop = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, void 0, function () {
     var _a, docker, h, containers, start, end, _loop_2, i;
     return __generator(this, function (_b) {
         switch (_b.label) {
-            case 0: return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 0: return [4 /*yield*/, getDocker(config, id, log)];
             case 1:
                 _a = _b.sent(), docker = _a.docker, h = _a.h;
                 return [4 /*yield*/, docker.listContainers()];
@@ -257,8 +257,8 @@ var stop = function (config, id, stakerId, log) { return __awaiter(void 0, void 
                 }, {});
                 start = 0;
                 end = h.validators.length;
-                if (stakerId) {
-                    start = h.validators.findIndex(function (e) { return e === stakerId; });
+                if (nodeId) {
+                    start = h.validators.findIndex(function (e) { return e === nodeId; });
                     if (start < 0) {
                         return [2 /*return*/, false];
                     }
@@ -303,11 +303,11 @@ var stop = function (config, id, stakerId, log) { return __awaiter(void 0, void 
     });
 }); };
 exports.stop = stop;
-var showValidators = function (config, id, stakerId, log) { return __awaiter(void 0, void 0, void 0, function () {
+var showValidators = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, void 0, function () {
     var _a, docker, h, containers, start, end, i, v, name_3, e, ports;
     return __generator(this, function (_b) {
         switch (_b.label) {
-            case 0: return [4 /*yield*/, exports.getDocker(config, id, log)];
+            case 0: return [4 /*yield*/, getDocker(config, id, log)];
             case 1:
                 _a = _b.sent(), docker = _a.docker, h = _a.h;
                 return [4 /*yield*/, docker.listContainers({ all: true })];
@@ -318,8 +318,8 @@ var showValidators = function (config, id, stakerId, log) { return __awaiter(voi
                 }, {});
                 start = 0;
                 end = h.validators.length;
-                if (stakerId) {
-                    start = h.validators.findIndex(function (e) { return e === stakerId; });
+                if (nodeId) {
+                    start = h.validators.findIndex(function (e) { return e === nodeId; });
                     if (start < 0) {
                         return [2 /*return*/, false];
                     }
@@ -362,7 +362,7 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
             case 1:
                 _a.sent();
-                return [4 /*yield*/, exports.getDocker(config, id, log)];
+                return [4 /*yield*/, getDocker(config, id, log)];
             case 2:
                 docker = (_a.sent()).docker;
                 return [4 /*yield*/, new Promise(function (resolve, reject) {
@@ -395,14 +395,14 @@ var main = function () {
     /* eslint-disable @typescript-eslint/no-unsafe-return */
     var getHostId = function (y) { return y.positional('hostid', {
         type: 'string',
-        describe: 'Host ID'
+        describe: 'Host ID (optional, empty to include all hosts)'
     }); };
     var getHostStakerId = function (y) { return y.positional('hostid', {
         type: 'string',
-        describe: 'Host ID'
-    }).positional('stakerid', {
+        describe: 'Host ID (optional, empty to include all hosts)'
+    }).positional('nodeid', {
         type: 'string',
-        describe: 'Staker ID'
+        describe: 'Staker ID (optional, empty to include all validators)'
     }); };
     /* eslint-enable @typescript-eslint/no-unsafe-call */
     /* eslint-enable @typescript-eslint/no-unsafe-return */
@@ -432,7 +432,7 @@ var main = function () {
         }); };
     };
     yargs_1.default(helpers_1.hideBin(process.argv))
-        .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        .command('run [host-id] [node-id]', 'start the container(s) on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -460,14 +460,14 @@ var main = function () {
                     if (!(argv.hostId in config.hosts)) {
                         die("run: host id \"" + argv.hostId + "\" not found");
                     }
-                    return [4 /*yield*/, exports.run(config, argv.hostId, argv.stakerId, log)];
+                    return [4 /*yield*/, exports.run(config, argv.hostId, argv.nodeId, log)];
                 case 6:
                     _c.sent();
                     _c.label = 7;
                 case 7: return [2 /*return*/];
             }
         });
-    }); })).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+    }); })).command('stop [host-id] [node-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -495,7 +495,7 @@ var main = function () {
                     if (!(argv.hostId in config.hosts)) {
                         die("stop: host id \"" + argv.hostId + "\" not found");
                     }
-                    return [4 /*yield*/, exports.stop(config, argv.hostId, argv.stakerId, log)];
+                    return [4 /*yield*/, exports.stop(config, argv.hostId, argv.nodeId, log)];
                 case 6:
                     _c.sent();
                     _c.label = 7;
@@ -537,7 +537,7 @@ var main = function () {
                 case 7: return [2 /*return*/];
             }
         });
-    }); })).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+    }); })).command('show [host-id] [node-id]', 'show validators on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -565,10 +565,10 @@ var main = function () {
                     if (!(argv.hostId in config.hosts)) {
                         die("show: host id \"" + argv.hostId + "\" not found");
                     }
-                    return [4 /*yield*/, exports.showValidators(config, argv.hostId, argv.stakerId, log)];
+                    return [4 /*yield*/, exports.showValidators(config, argv.hostId, argv.nodeId, log)];
                 case 6:
                     if (!(_c.sent())) {
-                        die("show: staker id \"" + argv.stakerId + "\" not found");
+                        die("show: node id \"" + argv.nodeId + "\" not found");
                     }
                     _c.label = 7;
                 case 7: return [2 /*return*/];

@@ -2,7 +2,6 @@
 import Docker = require('dockerode');
 import SSHPromise = require('ssh2-promise');
 /* eslint-disable-next-line */
-/* eslint-disable no-underscore-dangle */
 const sshModem: any = require('docker-modem/lib/ssh');
 import util from 'util';
 import stream from 'stream';
@@ -44,7 +43,7 @@ export const validatorsSchema = S({
     required: ["release", "workDir", "baseStakingPort", "baseHttpPort", "hosts"],
 });
 
-export const getDocker = async (config: Validated<typeof validatorsSchema>, id: string, log: stream.Writable) => {
+const getDocker = async (config: Validated<typeof validatorsSchema>, id: string, log: stream.Writable) => {
     const h = config.hosts[id];
     const host = (await dnsLookup(h.host)).address;
     log.write(`connecting to ${id} (${h.host}: ${host})...\n`);
@@ -60,7 +59,7 @@ export const getDocker = async (config: Validated<typeof validatorsSchema>, id: 
     return {docker, sshConfig, h, host};
 }
 
-export const run = async (config: Validated<typeof validatorsSchema>, id: string, stakerId: string | null, log: stream.Writable) => {
+export const run = async (config: Validated<typeof validatorsSchema>, id: string, nodeId: string | null, log: stream.Writable): Promise<boolean> => {
     const {docker, sshConfig, h, host} = await getDocker(config, id, log);
     const containers = new Set((await docker.listContainers({ all: true })).map(e => e.Names[0]));
     const sshConn = new SSHPromise(sshConfig);
@@ -68,8 +67,8 @@ export const run = async (config: Validated<typeof validatorsSchema>, id: string
 
     let start = 0;
     let end = h.validators.length;
-    if (stakerId) {
-        start = h.validators.findIndex(e => e === stakerId);
+    if (nodeId) {
+        start = h.validators.findIndex(e => e === nodeId);
         if (start < 0) {
             return false;
         }
@@ -100,6 +99,7 @@ export const run = async (config: Validated<typeof validatorsSchema>, id: string
             portBindings[`${httpPort}/tcp`] = [{ HostPort: `${httpPort}` }];
             /* eslint-enable @typescript-eslint/naming-convention */
 
+            /* eslint-disable no-underscore-dangle */
             const _run = async () => {
                 await sshConn.exec(`mkdir -p ${workDir}/${v}/`);
                 log.write(`starting validator ${v} on core ${affin.join(',')}\n`);
@@ -139,15 +139,17 @@ export const run = async (config: Validated<typeof validatorsSchema>, id: string
                     log.write(`started validator ${v}\n`);
                 });
             }
+            /* eslint-enable no-underscore-dangle */
             await _run();
             // pms.push(start());
         }
     }
     // await Promise.all(pms);
     await sshConn.close();
+    return true;
 }
 
-export const stop = async (config: Validated<typeof validatorsSchema>, id: string, stakerId: string | null, log: stream.Writable) => {
+export const stop = async (config: Validated<typeof validatorsSchema>, id: string, nodeId: string | null, log: stream.Writable): Promise<boolean> => {
     const {docker, h} = await getDocker(config, id, log);
     const containers = (await docker.listContainers()).reduce((a: {[key: string]: string}, e) => {
         a[e.Names[0]] = e.Id;
@@ -155,8 +157,8 @@ export const stop = async (config: Validated<typeof validatorsSchema>, id: strin
     }, {});
     let start = 0;
     let end = h.validators.length;
-    if (stakerId) {
-        start = h.validators.findIndex(e => e === stakerId);
+    if (nodeId) {
+        start = h.validators.findIndex(e => e === nodeId);
         if (start < 0) {
             return false;
         }
@@ -180,7 +182,7 @@ export const stop = async (config: Validated<typeof validatorsSchema>, id: strin
     return true;
 }
 
-export const showValidators = async (config: Validated<typeof validatorsSchema>, id: string, stakerId: string | null, log: stream.Writable) => {
+export const showValidators = async (config: Validated<typeof validatorsSchema>, id: string, nodeId: string | null, log: stream.Writable): Promise<boolean> => {
     const {docker, h} = await getDocker(config, id, log);
     const containers = (await docker.listContainers({ all: true })).reduce((a: {[key: string]: Docker.ContainerInfo}, e) => {
         a[e.Names[0]] = e;
@@ -189,8 +191,8 @@ export const showValidators = async (config: Validated<typeof validatorsSchema>,
 
     let start = 0;
     let end = h.validators.length;
-    if (stakerId) {
-        start = h.validators.findIndex(e => e === stakerId);
+    if (nodeId) {
+        start = h.validators.findIndex(e => e === nodeId);
         if (start < 0) {
             return false;
         }
@@ -208,7 +210,7 @@ export const showValidators = async (config: Validated<typeof validatorsSchema>,
     return true;
 }
 
-export const buildImage = async (config: Validated<typeof validatorsSchema>, id: string, log: stream.Writable) => {
+export const buildImage = async (config: Validated<typeof validatorsSchema>, id: string, log: stream.Writable): Promise<void> => {
     const branch = config.release;
     const dockerhubRepo = 'avaplatform/avalanchego';
     const remote = 'https://github.com/ava-labs/avalanchego.git';
@@ -256,14 +258,14 @@ const main = () => {
     /* eslint-disable @typescript-eslint/no-unsafe-return */
     const getHostId = (y: any) => y.positional('hostid', {
         type: 'string',
-        describe: 'Host ID'
+        describe: 'Host ID (optional, empty to include all hosts)'
     });
     const getHostStakerId = (y: any) => y.positional('hostid', {
         type: 'string',
-        describe: 'Host ID'
-    }).positional('stakerid', {
+        describe: 'Host ID (optional, empty to include all hosts)'
+    }).positional('nodeid', {
         type: 'string',
-        describe: 'Staker ID'
+        describe: 'Staker ID (optional, empty to include all validators)'
     });
     /* eslint-enable @typescript-eslint/no-unsafe-call */
     /* eslint-enable @typescript-eslint/no-unsafe-return */
@@ -281,7 +283,7 @@ const main = () => {
     };
 
     yargs(hideBin(process.argv))
-        .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
+        .command('run [host-id] [node-id]', 'start the container(s) on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
@@ -292,9 +294,9 @@ const main = () => {
                 if (!(argv.hostId in config.hosts)) {
                     die(`run: host id "${argv.hostId}" not found`);
                 }
-                await run(config, argv.hostId, argv.stakerId, log);
+                await run(config, argv.hostId, argv.nodeId, log);
             }
-        })).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
+        })).command('stop [host-id] [node-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
@@ -306,7 +308,7 @@ const main = () => {
                     die(`stop: host id "${argv.hostId}" not found`);
 
                 }
-                await stop(config, argv.hostId, argv.stakerId, log);
+                await stop(config, argv.hostId, argv.nodeId, log);
             }
         })).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
@@ -322,7 +324,7 @@ const main = () => {
                 }
                 await buildImage(config, argv.hostId, log);
             }
-        })).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
+        })).command('show [host-id] [node-id]', 'show validators on the given host', getHostStakerId, wrapHandler(async (argv: any) => {
             if (argv.hostId === undefined) {
                 const config = getConfig(argv.profile);
                 for (const id in config.hosts) {
@@ -334,8 +336,8 @@ const main = () => {
                     die(`show: host id "${argv.hostId}" not found`);
 
                 }
-                if (!await showValidators(config, argv.hostId, argv.stakerId, log)) {
-                    die(`show: staker id "${argv.stakerId}" not found`);
+                if (!await showValidators(config, argv.hostId, argv.nodeId, log)) {
+                    die(`show: node id "${argv.nodeId}" not found`);
                 }
             }
         })).option('profile', {
