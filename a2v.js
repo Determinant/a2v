@@ -44,7 +44,7 @@ exports.buildImage = exports.showValidators = exports.stop = exports.run = expor
 var Docker = require("dockerode");
 var SSHPromise = require("ssh2-promise");
 /* eslint-disable-next-line */
-var sshModem = require('docker-modem/lib/ssh');
+var sshModem = require("docker-modem/lib/ssh");
 var util_1 = __importDefault(require("util"));
 var dns_1 = __importDefault(require("dns"));
 var fs_1 = __importDefault(require("fs"));
@@ -58,10 +58,22 @@ var helpers_1 = require("yargs/helpers");
 exports.validatorsSchema = ts_json_validator_1.createSchema({
     type: "object",
     properties: {
-        release: ts_json_validator_1.createSchema({ type: "string", title: "release (tag/branch) of avalanchego" }),
-        workDir: ts_json_validator_1.createSchema({ type: "string", title: "working directory (databases and logs) on the host system used by validators" }),
-        baseStakingPort: ts_json_validator_1.createSchema({ type: "number", title: "base port number for staking/voting" }),
-        baseHttpPort: ts_json_validator_1.createSchema({ type: "number", title: "base port number for JSON/RPC" }),
+        release: ts_json_validator_1.createSchema({
+            type: "string",
+            title: "release (tag/branch) of avalanchego",
+        }),
+        workDir: ts_json_validator_1.createSchema({
+            type: "string",
+            title: "working directory (databases and logs) on the host system used by validators",
+        }),
+        baseStakingPort: ts_json_validator_1.createSchema({
+            type: "number",
+            title: "base port number for staking/voting",
+        }),
+        baseHttpPort: ts_json_validator_1.createSchema({
+            type: "number",
+            title: "base port number for JSON/RPC",
+        }),
         hosts: ts_json_validator_1.createSchema({
             type: "object",
             additionalProperties: ts_json_validator_1.createSchema({
@@ -70,16 +82,33 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
                     host: ts_json_validator_1.createSchema({ type: "string" }),
                     username: ts_json_validator_1.createSchema({ type: "string" }),
                     privateKeyFile: ts_json_validator_1.createSchema({ type: "string" }),
-                    validators: ts_json_validator_1.createSchema({ type: "array", items: ts_json_validator_1.createSchema({ type: "string" }) }),
+                    validators: ts_json_validator_1.createSchema({
+                        type: "array",
+                        items: ts_json_validator_1.createSchema({ type: "string" }),
+                    }),
                     ncpu: ts_json_validator_1.createSchema({ type: "number" }),
                     cpuPerNode: ts_json_validator_1.createSchema({ type: "number" }),
                     cpuStride: ts_json_validator_1.createSchema({ type: "number" }),
                 },
-                required: ["host", "username", "privateKeyFile", "validators", "ncpu", "cpuPerNode", "cpuStride"]
-            })
+                required: [
+                    "host",
+                    "username",
+                    "privateKeyFile",
+                    "validators",
+                    "ncpu",
+                    "cpuPerNode",
+                    "cpuStride",
+                ],
+            }),
         }),
     },
-    required: ["release", "workDir", "baseStakingPort", "baseHttpPort", "hosts"],
+    required: [
+        "release",
+        "workDir",
+        "baseStakingPort",
+        "baseHttpPort",
+        "hosts",
+    ],
 });
 var getDocker = function (config, id, log) { return __awaiter(void 0, void 0, void 0, function () {
     var h, host, sshConfig, docker;
@@ -94,7 +123,7 @@ var getDocker = function (config, id, log) { return __awaiter(void 0, void 0, vo
                 sshConfig = {
                     host: host,
                     username: h.username,
-                    privateKey: fs_1.default.readFileSync(h.privateKeyFile)
+                    privateKey: fs_1.default.readFileSync(h.privateKeyFile),
                 };
                 docker = new Docker({
                     // eslint-disable-next-line
@@ -133,7 +162,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                             case 0:
                                 v = h.validators[i];
                                 name_1 = "a2v-" + v;
-                                if (!containers.has('/' + name_1)) return [3 /*break*/, 1];
+                                if (!containers.has("/" + name_1)) return [3 /*break*/, 1];
                                 log.write("validator " + v + " already exists\n");
                                 return [3 /*break*/, 3];
                             case 1:
@@ -149,7 +178,9 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                 portBindings_1 = {};
                                 exposedPorts_1[stakingPort_1 + "/tcp"] = {};
                                 exposedPorts_1[httpPort_1 + "/tcp"] = {};
-                                portBindings_1[stakingPort_1 + "/tcp"] = [{ HostPort: "" + stakingPort_1 }];
+                                portBindings_1[stakingPort_1 + "/tcp"] = [
+                                    { HostPort: "" + stakingPort_1 },
+                                ];
                                 portBindings_1[httpPort_1 + "/tcp"] = [{ HostPort: "" + httpPort_1 }];
                                 _run = function () { return __awaiter(void 0, void 0, void 0, function () {
                                     var cmd, key, c;
@@ -158,25 +189,28 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                             case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir + "/" + v + "/")];
                                             case 1:
                                                 _a.sent();
-                                                log.write("starting validator " + v + " on core " + affin_1.join(',') + "\n");
+                                                log.write("starting validator " + v + " on core " + affin_1.join(",") + "\n");
                                                 cmd = [
-                                                    './build/avalanchego',
-                                                    '--public-ip',
+                                                    "./build/avalanchego",
+                                                    "--public-ip",
                                                     "" + host,
-                                                    '--staking-port',
+                                                    "--staking-port",
                                                     "" + stakingPort_1,
-                                                    '--http-host', '0.0.0.0',
-                                                    '--http-port',
+                                                    "--http-host",
+                                                    "0.0.0.0",
+                                                    "--http-port",
                                                     "" + httpPort_1,
-                                                    '--staking-tls-cert-file',
+                                                    "--staking-tls-cert-file",
                                                     "/staking/" + v + ".crt",
-                                                    '--staking-tls-key-file',
+                                                    "--staking-tls-key-file",
                                                     "/staking/" + v + ".key",
                                                 ];
-                                                key = tar_1.default.c({ cwd: './keys', prefix: './staking' }, [
+                                                key = tar_1.default
+                                                    .c({ cwd: "./keys", prefix: "./staking" }, [
                                                     "./" + v + ".crt",
                                                     "./" + v + ".key",
-                                                ]).pipe(fs_1.default.createWriteStream("./keys/" + v + ".tar"));
+                                                ])
+                                                    .pipe(fs_1.default.createWriteStream("./keys/" + v + ".tar"));
                                                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
                                             case 2:
                                                 _a.sent();
@@ -188,16 +222,16 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                         ExposedPorts: exposedPorts_1,
                                                         HostConfig: {
                                                             AutoRemove: true,
-                                                            CpusetCpus: affin_1.join(','),
+                                                            CpusetCpus: affin_1.join(","),
                                                             Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
                                                             PortBindings: portBindings_1,
                                                             Binds: [workDir + "/" + v + "/:/root/.avalanchego:"],
-                                                        }
+                                                        },
                                                     })];
                                             case 3:
                                                 c = _a.sent();
                                                 /* eslint-enable @typescript-eslint/naming-convention */
-                                                return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: '/' })];
+                                                return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: "/" })];
                                             case 4:
                                                 /* eslint-enable @typescript-eslint/naming-convention */
                                                 _a.sent();
@@ -271,10 +305,13 @@ var stop = function (config, id, nodeId, log) { return __awaiter(void 0, void 0,
                             case 0:
                                 v = h.validators[i];
                                 name_2 = "a2v-" + v;
-                                cid = containers['/' + name_2];
+                                cid = containers["/" + name_2];
                                 if (!cid) return [3 /*break*/, 2];
                                 log.write("stopping validator " + v + "\n");
-                                pm = docker.getContainer(cid).stop().then(function () {
+                                pm = docker
+                                    .getContainer(cid)
+                                    .stop()
+                                    .then(function () {
                                     log.write("stopped validator " + v + "\n");
                                 });
                                 return [4 /*yield*/, pm];
@@ -328,9 +365,9 @@ var showValidators = function (config, id, nodeId, log) { return __awaiter(void 
                 for (i = start; i < end; i++) {
                     v = h.validators[i];
                     name_3 = "a2v-" + v;
-                    e = containers['/' + name_3];
+                    e = containers["/" + name_3];
                     if (e) {
-                        ports = e.Ports.map(function (_e) { return _e.PrivatePort + "->" + _e.PublicPort; }).join(',');
+                        ports = e.Ports.map(function (_e) { return _e.PrivatePort + "->" + _e.PublicPort; }).join(",");
                         log.write(v + ": id(" + e.Id + ") ports(" + ports + ") image(" + e.Image + ")\n");
                     }
                 }
@@ -345,20 +382,20 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
         switch (_a.label) {
             case 0:
                 branch = config.release;
-                dockerhubRepo = 'avaplatform/avalanchego';
-                remote = 'https://github.com/ava-labs/avalanchego.git';
-                gopath = './.build_image_gopath';
+                dockerhubRepo = "avaplatform/avalanchego";
+                remote = "https://github.com/ava-labs/avalanchego.git";
+                gopath = "./.build_image_gopath";
                 workprefix = gopath + "/src/github.com/ava-labs";
-                shelljs_1.default.rm('-rf', workprefix);
+                shelljs_1.default.rm("-rf", workprefix);
                 avalancheClone = workprefix + "/avalanchego";
-                shelljs_1.default.exec('git config --global crendential.helper cache');
+                shelljs_1.default.exec("git config --global crendential.helper cache");
                 shelljs_1.default.exec("git clone \"" + remote + "\" \"" + avalancheClone + "\" --depth=1 -b " + branch);
                 shelljs_1.default.exec("sed -i 's/^.git$//g' \"" + avalancheClone + "/.dockerignore\"");
                 tarDockerFile = avalancheClone + "/avalanchego.tar";
                 tag = dockerhubRepo + ":" + branch;
-                key = tar_1.default.c({ cwd: avalancheClone }, [
-                    ".",
-                ]).pipe(fs_1.default.createWriteStream(tarDockerFile));
+                key = tar_1.default
+                    .c({ cwd: avalancheClone }, ["."])
+                    .pipe(fs_1.default.createWriteStream(tarDockerFile));
                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
             case 1:
                 _a.sent();
@@ -372,7 +409,7 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
                             }
                             if (output) {
                                 output.pipe(process.stdout, { end: true });
-                                output.on('end', resolve);
+                                output.on("end", resolve);
                             }
                         });
                     })];
@@ -389,21 +426,27 @@ exports.buildImage = buildImage;
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 var main = function () {
     var getConfig = function (profile) {
-        return (new ts_json_validator_1.TsjsonParser(exports.validatorsSchema)).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
+        return new ts_json_validator_1.TsjsonParser(exports.validatorsSchema).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
     };
     /* eslint-disable @typescript-eslint/no-unsafe-call */
     /* eslint-disable @typescript-eslint/no-unsafe-return */
-    var getHostId = function (y) { return y.positional('hostid', {
-        type: 'string',
-        describe: 'Host ID (optional, empty to include all hosts)'
-    }); };
-    var getHostStakerId = function (y) { return y.positional('hostid', {
-        type: 'string',
-        describe: 'Host ID (optional, empty to include all hosts)'
-    }).positional('nodeid', {
-        type: 'string',
-        describe: 'Staker ID (optional, empty to include all validators)'
-    }); };
+    var getHostId = function (y) {
+        return y.positional("hostid", {
+            type: "string",
+            describe: "Host ID (optional, empty to include all hosts)",
+        });
+    };
+    var getHostStakerId = function (y) {
+        return y
+            .positional("hostid", {
+            type: "string",
+            describe: "Host ID (optional, empty to include all hosts)",
+        })
+            .positional("nodeid", {
+            type: "string",
+            describe: "Staker ID (optional, empty to include all validators)",
+        });
+    };
     /* eslint-enable @typescript-eslint/no-unsafe-call */
     /* eslint-enable @typescript-eslint/no-unsafe-return */
     var log = process.stdout;
@@ -432,7 +475,7 @@ var main = function () {
         }); };
     };
     yargs_1.default(helpers_1.hideBin(process.argv))
-        .command('run [host-id] [node-id]', 'start the container(s) on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        .command("run [host-id] [node-id]", "start the container(s) on the given host", getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -467,7 +510,8 @@ var main = function () {
                 case 7: return [2 /*return*/];
             }
         });
-    }); })).command('stop [host-id] [node-id]', 'stop the container(s) on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+    }); }))
+        .command("stop [host-id] [node-id]", "stop the container(s) on the given host", getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -502,7 +546,8 @@ var main = function () {
                 case 7: return [2 /*return*/];
             }
         });
-    }); })).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+    }); }))
+        .command("buildImage [host-id]", "build avalanchego image on the given host", getHostId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -537,7 +582,8 @@ var main = function () {
                 case 7: return [2 /*return*/];
             }
         });
-    }); })).command('show [host-id] [node-id]', 'show validators on the given host', getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+    }); }))
+        .command("show [host-id] [node-id]", "show validators on the given host", getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -574,14 +620,15 @@ var main = function () {
                 case 7: return [2 /*return*/];
             }
         });
-    }); })).option('profile', {
-        alias: 'c',
-        type: 'string',
-        default: './validators.json',
-        description: 'JSON file that describes all validators'
+    }); }))
+        .option("profile", {
+        alias: "c",
+        type: "string",
+        default: "./validators.json",
+        description: "JSON file that describes all validators",
     })
         .strict()
-        .showHelpOnFail(false, 'run with --help to see help information')
+        .showHelpOnFail(false, "run with --help to see help information")
         .parse();
 };
 /* eslint-enable @typescript-eslint/no-unsafe-member-access */
