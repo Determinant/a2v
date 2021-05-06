@@ -1,5 +1,5 @@
-a\ :sup:`2`\ v
---------------
+a\ :sup:`2`\ v: Avalanche Auto Validator
+----------------------------------------
 
 NOTE: this tool is still in its early stage (I'm personally using it though).
 Stay tuned for the updates.
