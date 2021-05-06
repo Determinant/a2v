@@ -30,6 +30,7 @@ How to Use
 
   - Change ``host`` to your docker host address.
   - Configure SSH access accordingly.
+  - Change ``workDir`` to where you would like to keep the databases and logs (and also the user has access to).
 
 - ``npm install``
 
