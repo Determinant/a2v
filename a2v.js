@@ -66,6 +66,10 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
             type: "string",
             title: "working directory (databases and logs) on the host system used by validators",
         }),
+        keys: ts_json_validator_1.createSchema({
+            type: "string",
+            title: "the directory of all keys/certs",
+        }),
         baseStakingPort: ts_json_validator_1.createSchema({
             type: "number",
             title: "base port number for staking/voting",
@@ -105,6 +109,7 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
     required: [
         "release",
         "workDir",
+        "keys",
         "baseStakingPort",
         "baseHttpPort",
         "hosts",
@@ -134,7 +139,7 @@ var getDocker = function (config, id, log) { return __awaiter(void 0, void 0, vo
     });
 }); };
 var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, void 0, function () {
-    var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, start, end, _loop_1, i;
+    var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, keysDir, start, end, _loop_1, i;
     return __generator(this, function (_c) {
         switch (_c.label) {
             case 0: return [4 /*yield*/, getDocker(config, id, log)];
@@ -146,6 +151,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                 containers = new (_b.apply(Set, [void 0, (_c.sent()).map(function (e) { return e.Names[0]; })]))();
                 sshConn = new SSHPromise(sshConfig);
                 workDir = config.workDir;
+                keysDir = config.keysDir;
                 start = 0;
                 end = h.validators.length;
                 if (nodeId) {
@@ -206,11 +212,11 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                     "/staking/" + v + ".key",
                                                 ];
                                                 key = tar_1.default
-                                                    .c({ cwd: "./keys", prefix: "./staking" }, [
+                                                    .c({ cwd: keysDir, prefix: "./staking" }, [
                                                     "./" + v + ".crt",
                                                     "./" + v + ".key",
                                                 ])
-                                                    .pipe(fs_1.default.createWriteStream("./keys/" + v + ".tar"));
+                                                    .pipe(fs_1.default.createWriteStream(keysDir + "/" + v + ".tar"));
                                                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
                                             case 2:
                                                 _a.sent();
@@ -231,7 +237,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                             case 3:
                                                 c = _a.sent();
                                                 /* eslint-enable @typescript-eslint/naming-convention */
-                                                return [4 /*yield*/, c.putArchive("./keys/" + v + ".tar", { path: "/" })];
+                                                return [4 /*yield*/, c.putArchive(keysDir + "/" + v + ".tar", { path: "/" })];
                                             case 4:
                                                 /* eslint-enable @typescript-eslint/naming-convention */
                                                 _a.sent();

@@ -1,6 +1,7 @@
 {
     "release": "v1.4.1",
     "workDir": "/bigboy/stakers",
+    "keys": "./keys",
     "baseStakingPort": 9651,
     "baseHttpPort": 9650,
     "hosts": {

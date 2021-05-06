@@ -35,13 +35,13 @@ How to Use
   - Configure SSH access accordingly.
   - Change ``workDir`` to where you would like to keep the databases and logs (and also the user has access to).
 
-- ``npm install``
+- ``npm install -g a2v``
 
 - Before we start the validators, we need to build the image on the remote host(s):
 
   ::
 
-     ./a2v.js buildImage <your-host>
+     a2v buildImage <your-host>
 
   (``<your-host>`` could be ``example``, for example). This builds a
   ready-to-use avalanchego image on the selected host, with the release version
@@ -51,7 +51,7 @@ How to Use
 
   ::
 
-     ./a2v.js run <your-host>
+     a2v run <your-host>
 
   Done!
 
@@ -59,4 +59,4 @@ How to Use
 
   ::
 
-     ./a2v.js stop <your-host>
+     a2v stop <your-host>

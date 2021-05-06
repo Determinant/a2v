@@ -28,6 +28,10 @@ export const validatorsSchema = S({
             title:
                 "working directory (databases and logs) on the host system used by validators",
         }),
+        keys: S({
+            type: "string",
+            title: "the directory of all keys/certs",
+        }),
         baseStakingPort: S({
             type: "number",
             title: "base port number for staking/voting",
@@ -67,6 +71,7 @@ export const validatorsSchema = S({
     required: [
         "release",
         "workDir",
+        "keys",
         "baseStakingPort",
         "baseHttpPort",
         "hosts",
@@ -105,6 +110,7 @@ export const run = async (
     );
     const sshConn = new SSHPromise(sshConfig);
     const workDir = config.workDir;
+    const keysDir = config.keysDir as string;
 
     let start = 0;
     let end = h.validators.length;
@@ -166,11 +172,11 @@ export const run = async (
                     `/staking/${v}.key`,
                 ];
                 const key = tar
-                    .c({ cwd: "./keys", prefix: "./staking" }, [
+                    .c({ cwd: keysDir, prefix: "./staking" }, [
                         `./${v}.crt`,
                         `./${v}.key`,
                     ])
-                    .pipe(fs.createWriteStream(`./keys/${v}.tar`));
+                    .pipe(fs.createWriteStream(`${keysDir}/${v}.tar`));
                 await new Promise((fulfill) => key.on("finish", fulfill));
 
                 /* eslint-disable @typescript-eslint/naming-convention */
@@ -189,7 +195,7 @@ export const run = async (
                     },
                 });
                 /* eslint-enable @typescript-eslint/naming-convention */
-                await c.putArchive(`./keys/${v}.tar`, { path: "/" });
+                await c.putArchive(`${keysDir}/${v}.tar`, { path: "/" });
                 await c.start().then(() => {
                     log.write(`started validator ${v}\n`);
                 });
