@@ -23,7 +23,7 @@ How to Use
   - (only for those who want to follow an example): ``sudo mkdir -p
     /bigboy/stakers && sudo chown ubuntu:ubuntu -R /bigboy/stakers``
 
-- Then modify ``validator.js`` to suit your needs.
+- Then modify ``validators.json`` to suit your needs.
 
   - The exmaple shows three hosts named "example", "docker1" and "docker2".
     ``example`` supports one validator "mystaker",
