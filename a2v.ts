@@ -53,14 +53,24 @@ async function getDocker(config: Validated<typeof ValidatorsSchema>, id: string)
     return {docker, sshConfig, h, host};
 }
 
-async function run(config: Validated<typeof ValidatorsSchema>, id: string) {
+async function run(config: Validated<typeof ValidatorsSchema>, id: string, stakerId: string | null) {
     const {docker, sshConfig, h, host} = await getDocker(config, id);
-    let containers = new Set((await docker.listContainers()).map(e => e.Names[0]));
+    let containers = new Set((await docker.listContainers({ all: true })).map(e => e.Names[0]));
     const sshConn = new SSHPromise(sshConfig);
     const workDir = config.workDir;
 
+    let start = 0;
+    let end = h.validators.length;
+    if (stakerId) {
+        start = h.validators.findIndex(e => e == stakerId);
+        if (start < 0) {
+            return false;
+        }
+        end = start + 1;
+    }
+
     //let pms = [];
-    for (let i = 0; i < h.validators.length; i++) {
+    for (let i = start; i < end; i++) {
         const v = h.validators[i];
         const name = `a2v-${v}`;
         if (containers.has('/' + name)) {
@@ -126,14 +136,23 @@ async function run(config: Validated<typeof ValidatorsSchema>, id: string) {
     sshConn.close();
 }
 
-async function stop(config: Validated<typeof ValidatorsSchema>, id: string) {
+async function stop(config: Validated<typeof ValidatorsSchema>, id: string, stakerId: string | null) {
     const {docker, sshConfig, h} = await getDocker(config, id);
     let containers = (await docker.listContainers()).reduce((a: {[key: string]: string}, e) => {
         a[e.Names[0]] = e.Id;
         return a;
     }, {});
+    let start = 0;
+    let end = h.validators.length;
+    if (stakerId) {
+        start = h.validators.findIndex(e => e == stakerId);
+        if (start < 0) {
+            return false;
+        }
+        end = start + 1;
+    }
     //let pms = [];
-    for (let i = 0; i < h.validators.length; i++) {
+    for (let i = start; i < end; i++) {
         const v = h.validators[i];
         const name = `a2v-${v}`;
         const id = containers['/' + name];
@@ -147,12 +166,35 @@ async function stop(config: Validated<typeof ValidatorsSchema>, id: string) {
         }
     }
     //await Promise.all(pms);
+    return true;
 }
 
-async function runAll(config: Validated<typeof ValidatorsSchema>) {
-    for (const id in config.hosts) {
-        await run(config, id);
+async function showValidators(config: Validated<typeof ValidatorsSchema>, id: string, stakerId: string | null) {
+    const {docker, sshConfig, h} = await getDocker(config, id);
+    let containers = (await docker.listContainers({ all: true })).reduce((a: {[key: string]: Docker.ContainerInfo}, e) => {
+        a[e.Names[0]] = e;
+        return a;
+    }, {});
+
+    let start = 0;
+    let end = h.validators.length;
+    if (stakerId) {
+        start = h.validators.findIndex(e => e == stakerId);
+        if (start < 0) {
+            return false;
+        }
+        end = start + 1;
     }
+    for (let i = start; i < end; i++) {
+        const v = h.validators[i];
+        const name = `a2v-${v}`;
+        const e = containers['/' + name];
+        if (e) {
+            const ports = e.Ports.map(e => `${e.PrivatePort}->${e.PublicPort}`).join(',');
+            console.log(`${v}: id(${e.Id}) ports(${ports}) image(${e.Image})`);
+        }
+    }
+    return true;
 }
 
 async function buildImage(config: Validated<typeof ValidatorsSchema>, id: string) {
@@ -207,32 +249,49 @@ async function main() {
         type: 'string',
         describe: 'Host ID'
     });
+    const getHostStakerId = (yargs: any) => yargs.positional('hostid', {
+        type: 'string',
+        describe: 'Host ID'
+    }).positional('stakerid', {
+        type: 'string',
+        describe: 'Staker ID'
+    });
+
 
     yargs(hideBin(process.argv))
-        .command('run [host-id]', 'start the containers on the given host', getHostId, async (argv: any) => {
+        .command('run [host-id] [staker-id]', 'start the containers on the given host', getHostStakerId, async (argv: any) => {
             if (argv.hostId === undefined) {
-                runAll(getConfig(argv.profile));
+                const config = getConfig(argv.profile);
+                for (const id in config.hosts) {
+                    await run(config, id, null);
+                }
             } else {
                 const config = getConfig(argv.profile);
                 if (!(argv.hostId in config.hosts)) {
                     die(`run: host id "${argv.hostId}" not found`);
                 }
-                await run(config, argv.hostId);
+                await run(config, argv.hostId, argv.stakerId);
             }
-        }).command('stop [host-id]', 'stop the containers on the given host', getHostId, async (argv: any) => {
+        }).command('stop [host-id] [staker-id]', 'stop the container(s) on the given host', getHostStakerId, async (argv: any) => {
             if (argv.hostId === undefined) {
-                //stopAll(getConfig(argv.profile));
+                const config = getConfig(argv.profile);
+                for (const id in config.hosts) {
+                    await stop(config, id, null);
+                }
             } else {
                 const config = getConfig(argv.profile);
                 if (!(argv.hostId in config.hosts)) {
                     die(`stop: host id "${argv.hostId}" not found`);
 
                 }
-                await stop(config, argv.hostId);
+                await stop(config, argv.hostId, argv.stakerId);
             }
         }).command('buildImage [host-id]', 'build avalanchego image on the given host', getHostId, async (argv: any) => {
             if (argv.hostId === undefined) {
-                //buildImageAll(getConfig(argv.profile));
+                const config = getConfig(argv.profile);
+                for (const id in config.hosts) {
+                    await buildImage(config, id);
+                }
             } else {
                 const config = getConfig(argv.profile);
                 if (!(argv.hostId in config.hosts)) {
@@ -241,12 +300,29 @@ async function main() {
                 }
                 await buildImage(config, argv.hostId);
             }
+        }).command('show [host-id] [staker-id]', 'show validators on the given host', getHostStakerId, async (argv: any) => {
+            if (argv.hostId === undefined) {
+                const config = getConfig(argv.profile);
+                for (const id in config.hosts) {
+                    await showValidators(config, id, null);
+                }
+            } else {
+                const config = getConfig(argv.profile);
+                if (!(argv.hostId in config.hosts)) {
+                    die(`show: host id "${argv.hostId}" not found`);
+
+                }
+                if (!await showValidators(config, argv.hostId, argv.stakerId)) {
+                    die(`show: staker id "${argv.stakerId}" not found`);
+                }
+            }
         }).option('profile', {
             alias: 'c',
             type: 'string',
             default: './validators.json',
             description: 'JSON file that describes all validators'
         })
+        .strict()
         .showHelpOnFail(false, 'run with --help to see help information')
         .argv;
 }
