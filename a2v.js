@@ -434,7 +434,14 @@ exports.buildImage = buildImage;
 var main = function () {
     var getConfig = function (profile) {
         var config = new ts_json_validator_1.TsjsonParser(exports.validatorsSchema).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
-        config.keysDir = path_1.default.join(path_1.default.dirname(profile), config.keysDir);
+        var basePath = path_1.default.dirname(profile);
+        if (!path_1.default.isAbsolute(config.keysDir))
+            config.keysDir = path_1.default.join(basePath, config.keysDir);
+        for (var id in config.hosts) {
+            var h = config.hosts[id];
+            if (!path_1.default.isAbsolute(h.privateKeyFile))
+                config.hosts[id].privateKeyFile = path_1.default.join(basePath, h.privateKeyFile);
+        }
         return config;
     };
     /* eslint-disable @typescript-eslint/no-unsafe-call */

@@ -3,7 +3,7 @@
     "release": "v1.4.2",
     // path to the directory root that holds all databases and logs for validators, on the host
     "workDir": "/bigboy/stakers",
-    // relative path to the location of this file, the directory that holds all validator crendentials
+    // absolute path or relative path to this file, the directory that holds all validator crendentials
     "keysDir": "./keys",
     "baseStakingPort": 9651,
     "baseHttpPort": 9650,
@@ -12,6 +12,7 @@
         "example": {
             "host": "13.229.114.242",
             "username": "ubuntu",
+            // absolute path or relative path to this file
             "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
             "validators": ["mystaker"],
             // number of cores

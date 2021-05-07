@@ -345,7 +345,17 @@ const main = () => {
         const config = new TsjsonParser(validatorsSchema).parse(
             stripJsonComments(fs.readFileSync(profile).toString())
         );
-        config.keysDir = path.join(path.dirname(profile), config.keysDir);
+        const basePath = path.dirname(profile);
+        if (!path.isAbsolute(config.keysDir))
+            config.keysDir = path.join(basePath, config.keysDir);
+        for (const id in config.hosts) {
+            const h = config.hosts[id];
+            if (!path.isAbsolute(h.privateKeyFile))
+                config.hosts[id].privateKeyFile = path.join(
+                    basePath,
+                    h.privateKeyFile
+                );
+        }
         return config;
     };
     /* eslint-disable @typescript-eslint/no-unsafe-call */
