@@ -28,7 +28,7 @@ export const validatorsSchema = S({
             title:
                 "working directory (databases and logs) on the host system used by validators",
         }),
-        keys: S({
+        keysDir: S({
             type: "string",
             title: "the directory of all keys/certs",
         }),
@@ -71,7 +71,7 @@ export const validatorsSchema = S({
     required: [
         "release",
         "workDir",
-        "keys",
+        "keysDir",
         "baseStakingPort",
         "baseHttpPort",
         "hosts",
@@ -467,7 +467,8 @@ const main = () => {
             description: "JSON file that describes all validators",
         })
         .strict()
-        .showHelpOnFail(false, "run with --help to see help information")
+        .showHelpOnFail(true)
+        .demandCommand()
         .parse();
 };
 /* eslint-enable @typescript-eslint/no-unsafe-member-access */

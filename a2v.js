@@ -66,7 +66,7 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
             type: "string",
             title: "working directory (databases and logs) on the host system used by validators",
         }),
-        keys: ts_json_validator_1.createSchema({
+        keysDir: ts_json_validator_1.createSchema({
             type: "string",
             title: "the directory of all keys/certs",
         }),
@@ -109,7 +109,7 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
     required: [
         "release",
         "workDir",
-        "keys",
+        "keysDir",
         "baseStakingPort",
         "baseHttpPort",
         "hosts",
@@ -634,7 +634,8 @@ var main = function () {
         description: "JSON file that describes all validators",
     })
         .strict()
-        .showHelpOnFail(false, "run with --help to see help information")
+        .showHelpOnFail(true)
+        .demandCommand()
         .parse();
 };
 /* eslint-enable @typescript-eslint/no-unsafe-member-access */
