@@ -7,6 +7,7 @@ import util from "util";
 import stream from "stream";
 import dns from "dns";
 import fs from "fs";
+import path from "path";
 import tar from "tar";
 import { createSchema as S, TsjsonParser, Validated } from "ts-json-validator";
 import shell from "shelljs";
@@ -176,7 +177,7 @@ export const run = async (
                         `./${v}.crt`,
                         `./${v}.key`,
                     ])
-                    .pipe(fs.createWriteStream(`${keysDir}/${v}.tar`));
+                    .pipe(fs.createWriteStream(`${path.join(keysDir, v)}.tar`));
                 await new Promise((fulfill) => key.on("finish", fulfill));
 
                 /* eslint-disable @typescript-eslint/naming-convention */
@@ -191,11 +192,13 @@ export const run = async (
                         CpusetCpus: affin.join(","),
                         Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
                         PortBindings: portBindings,
-                        Binds: [`${workDir}/${v}/:/root/.avalanchego:`],
+                        Binds: [`${path.join(workDir, v)}:/root/.avalanchego:`],
                     },
                 });
                 /* eslint-enable @typescript-eslint/naming-convention */
-                await c.putArchive(`${keysDir}/${v}.tar`, { path: "/" });
+                await c.putArchive(`${path.join(keysDir, v)}.tar`, {
+                    path: "/",
+                });
                 await c.start().then(() => {
                     log.write(`started validator ${v}\n`);
                 });
@@ -214,6 +217,7 @@ export const stop = async (
     config: Validated<typeof validatorsSchema>,
     id: string,
     nodeId: string | null,
+    force: boolean,
     log: stream.Writable
 ): Promise<boolean> => {
     const { docker, h } = await getDocker(config, id, log);
@@ -239,13 +243,13 @@ export const stop = async (
         const name = `a2v-${v}`;
         const cid = containers["/" + name];
         if (cid) {
-            log.write(`stopping validator ${v}\n`);
-            const pm = docker
-                .getContainer(cid)
-                .stop()
-                .then(() => {
+            log.write(`${force ? "forced " : ""}stopping validator ${v}\n`);
+            const c = docker.getContainer(cid);
+            const pm = (force ? c.remove({ force: true }) : c.stop()).then(
+                () => {
                     log.write(`stopped validator ${v}\n`);
-                });
+                }
+            );
             await pm;
             // pms.push(pm);
         }
@@ -301,15 +305,17 @@ export const buildImage = async (
     const dockerhubRepo = "avaplatform/avalanchego";
     const remote = "https://github.com/ava-labs/avalanchego.git";
     const gopath = "./.build_image_gopath";
-    const workprefix = `${gopath}/src/github.com/ava-labs`;
+    const workprefix = path.join(gopath, "src", "github.com/ava-labs");
     shell.rm("-rf", workprefix);
-    const avalancheClone = `${workprefix}/avalanchego`;
+    const avalancheClone = path.join(workprefix, "avalanchego");
     shell.exec("git config --global crendential.helper cache");
     shell.exec(
         `git clone "${remote}" "${avalancheClone}" --depth=1 -b ${branch}`
     );
-    shell.exec(`sed -i 's/^\.git$//g' "${avalancheClone}/.dockerignore"`);
-    const tarDockerFile = `${avalancheClone}/avalanchego.tar`;
+    shell.exec(
+        `sed -i 's/^\.git$//g' '${path.join(avalancheClone, ".dockerignore")}'`
+    );
+    const tarDockerFile = path.join(avalancheClone, "avalanchego.tar");
     const tag = `${dockerhubRepo}:${branch}`;
     const key = tar
         .c({ cwd: avalancheClone }, [`.`])
@@ -335,10 +341,13 @@ export const buildImage = async (
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 const main = () => {
-    const getConfig = (profile: string) =>
-        new TsjsonParser(validatorsSchema).parse(
+    const getConfig = (profile: string) => {
+        const config = new TsjsonParser(validatorsSchema).parse(
             stripJsonComments(fs.readFileSync(profile).toString())
         );
+        config.keysDir = path.join(path.dirname(profile), config.keysDir);
+        return config;
+    };
     /* eslint-disable @typescript-eslint/no-unsafe-call */
     /* eslint-disable @typescript-eslint/no-unsafe-return */
     const getHostId = (y: any) =>
@@ -357,6 +366,12 @@ const main = () => {
                 describe:
                     "Staker ID (optional, empty to include all validators)",
             });
+    const getHostStakerId2 = (y: any) =>
+        getHostStakerId(y).option("force", {
+            alias: "f",
+            type: "boolean",
+            default: false,
+        });
     /* eslint-enable @typescript-eslint/no-unsafe-call */
     /* eslint-enable @typescript-eslint/no-unsafe-return */
     const log = process.stdout;
@@ -395,21 +410,27 @@ const main = () => {
             })
         )
         .command(
-            "stop [host-id] [node-id]",
+            "stop [host-id] [node-id] [--force]",
             "stop the container(s) on the given host",
-            getHostStakerId,
+            getHostStakerId2,
             wrapHandler(async (argv: any) => {
                 if (argv.hostId === undefined) {
                     const config = getConfig(argv.profile);
                     for (const id in config.hosts) {
-                        await stop(config, id, null, log);
+                        await stop(config, id, null, argv.force, log);
                     }
                 } else {
                     const config = getConfig(argv.profile);
                     if (!(argv.hostId in config.hosts)) {
                         die(`stop: host id "${argv.hostId}" not found`);
                     }
-                    await stop(config, argv.hostId, argv.nodeId, log);
+                    await stop(
+                        config,
+                        argv.hostId,
+                        argv.nodeId,
+                        argv.force,
+                        log
+                    );
                 }
             })
         )

@@ -48,6 +48,7 @@ var sshModem = require("docker-modem/lib/ssh");
 var util_1 = __importDefault(require("util"));
 var dns_1 = __importDefault(require("dns"));
 var fs_1 = __importDefault(require("fs"));
+var path_1 = __importDefault(require("path"));
 var tar_1 = __importDefault(require("tar"));
 var ts_json_validator_1 = require("ts-json-validator");
 var shelljs_1 = __importDefault(require("shelljs"));
@@ -216,7 +217,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                     "./" + v + ".crt",
                                                     "./" + v + ".key",
                                                 ])
-                                                    .pipe(fs_1.default.createWriteStream(keysDir + "/" + v + ".tar"));
+                                                    .pipe(fs_1.default.createWriteStream(path_1.default.join(keysDir, v) + ".tar"));
                                                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
                                             case 2:
                                                 _a.sent();
@@ -231,13 +232,15 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                             CpusetCpus: affin_1.join(","),
                                                             Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
                                                             PortBindings: portBindings_1,
-                                                            Binds: [workDir + "/" + v + "/:/root/.avalanchego:"],
+                                                            Binds: [path_1.default.join(workDir, v) + ":/root/.avalanchego:"],
                                                         },
                                                     })];
                                             case 3:
                                                 c = _a.sent();
                                                 /* eslint-enable @typescript-eslint/naming-convention */
-                                                return [4 /*yield*/, c.putArchive(keysDir + "/" + v + ".tar", { path: "/" })];
+                                                return [4 /*yield*/, c.putArchive(path_1.default.join(keysDir, v) + ".tar", {
+                                                        path: "/",
+                                                    })];
                                             case 4:
                                                 /* eslint-enable @typescript-eslint/naming-convention */
                                                 _a.sent();
@@ -282,7 +285,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
     });
 }); };
 exports.run = run;
-var stop = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, void 0, function () {
+var stop = function (config, id, nodeId, force, log) { return __awaiter(void 0, void 0, void 0, function () {
     var _a, docker, h, containers, start, end, _loop_2, i;
     return __generator(this, function (_b) {
         switch (_b.label) {
@@ -305,7 +308,7 @@ var stop = function (config, id, nodeId, log) { return __awaiter(void 0, void 0,
                     end = start + 1;
                 }
                 _loop_2 = function (i) {
-                    var v, name_2, cid, pm;
+                    var v, name_2, cid, c, pm;
                     return __generator(this, function (_c) {
                         switch (_c.label) {
                             case 0:
@@ -313,11 +316,9 @@ var stop = function (config, id, nodeId, log) { return __awaiter(void 0, void 0,
                                 name_2 = "a2v-" + v;
                                 cid = containers["/" + name_2];
                                 if (!cid) return [3 /*break*/, 2];
-                                log.write("stopping validator " + v + "\n");
-                                pm = docker
-                                    .getContainer(cid)
-                                    .stop()
-                                    .then(function () {
+                                log.write((force ? "forced " : "") + "stopping validator " + v + "\n");
+                                c = docker.getContainer(cid);
+                                pm = (force ? c.remove({ force: true }) : c.stop()).then(function () {
                                     log.write("stopped validator " + v + "\n");
                                 });
                                 return [4 /*yield*/, pm];
@@ -391,13 +392,13 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
                 dockerhubRepo = "avaplatform/avalanchego";
                 remote = "https://github.com/ava-labs/avalanchego.git";
                 gopath = "./.build_image_gopath";
-                workprefix = gopath + "/src/github.com/ava-labs";
+                workprefix = path_1.default.join(gopath, "src", "github.com/ava-labs");
                 shelljs_1.default.rm("-rf", workprefix);
-                avalancheClone = workprefix + "/avalanchego";
+                avalancheClone = path_1.default.join(workprefix, "avalanchego");
                 shelljs_1.default.exec("git config --global crendential.helper cache");
                 shelljs_1.default.exec("git clone \"" + remote + "\" \"" + avalancheClone + "\" --depth=1 -b " + branch);
-                shelljs_1.default.exec("sed -i 's/^.git$//g' \"" + avalancheClone + "/.dockerignore\"");
-                tarDockerFile = avalancheClone + "/avalanchego.tar";
+                shelljs_1.default.exec("sed -i 's/^.git$//g' '" + path_1.default.join(avalancheClone, ".dockerignore") + "'");
+                tarDockerFile = path_1.default.join(avalancheClone, "avalanchego.tar");
                 tag = dockerhubRepo + ":" + branch;
                 key = tar_1.default
                     .c({ cwd: avalancheClone }, ["."])
@@ -432,7 +433,9 @@ exports.buildImage = buildImage;
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 var main = function () {
     var getConfig = function (profile) {
-        return new ts_json_validator_1.TsjsonParser(exports.validatorsSchema).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
+        var config = new ts_json_validator_1.TsjsonParser(exports.validatorsSchema).parse(strip_json_comments_1.default(fs_1.default.readFileSync(profile).toString()));
+        config.keysDir = path_1.default.join(path_1.default.dirname(profile), config.keysDir);
+        return config;
     };
     /* eslint-disable @typescript-eslint/no-unsafe-call */
     /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -451,6 +454,13 @@ var main = function () {
             .positional("nodeid", {
             type: "string",
             describe: "Staker ID (optional, empty to include all validators)",
+        });
+    };
+    var getHostStakerId2 = function (y) {
+        return getHostStakerId(y).option("force", {
+            alias: "f",
+            type: "boolean",
+            default: false,
         });
     };
     /* eslint-enable @typescript-eslint/no-unsafe-call */
@@ -517,7 +527,7 @@ var main = function () {
             }
         });
     }); }))
-        .command("stop [host-id] [node-id]", "stop the container(s) on the given host", getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        .command("stop [host-id] [node-id] [--force]", "stop the container(s) on the given host", getHostStakerId2, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -532,7 +542,7 @@ var main = function () {
                 case 1:
                     if (!(_i < _a.length)) return [3 /*break*/, 4];
                     id = _a[_i];
-                    return [4 /*yield*/, exports.stop(config, id, null, log)];
+                    return [4 /*yield*/, exports.stop(config, id, null, argv.force, log)];
                 case 2:
                     _c.sent();
                     _c.label = 3;
@@ -545,7 +555,7 @@ var main = function () {
                     if (!(argv.hostId in config.hosts)) {
                         die("stop: host id \"" + argv.hostId + "\" not found");
                     }
-                    return [4 /*yield*/, exports.stop(config, argv.hostId, argv.nodeId, log)];
+                    return [4 /*yield*/, exports.stop(config, argv.hostId, argv.nodeId, argv.force, log)];
                 case 6:
                     _c.sent();
                     _c.label = 7;
