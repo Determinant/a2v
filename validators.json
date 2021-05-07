@@ -13,7 +13,7 @@
             "host": "13.229.114.242",
             "username": "ubuntu",
             // absolute path or relative path to this file
-            "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
+            "privateKeyFile": "./your-aws-key.pem",
             "validators": ["mystaker"],
             // number of cores
             "ncpu": 2,
@@ -25,7 +25,7 @@
         "docker1": {
             "host": "avax-host-1",
             "username": "ubuntu",
-            "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
+            "privateKeyFile": "./your-aws-key.pem",
             "validators": ["staker0", "staker1", "staker2", "staker3"],
             "ncpu": 8,
             "cpuPerNode": 3,
@@ -34,7 +34,7 @@
         "docker2": {
             "host": "avax-host-2",
             "username": "ubuntu",
-            "privateKeyFile": "/home/ymf/.ssh/ted-my-aws-key.pem",
+            "privateKeyFile": "./your-aws-key.pem",
             "validators": ["staker8", "staker9", "staker10"],
             "ncpu": 8,
             "cpuPerNode": 3,

@@ -60,3 +60,5 @@ How to Use
   ::
 
      a2v stop <your-host>
+
+- For more usage: ``a2v --help``
