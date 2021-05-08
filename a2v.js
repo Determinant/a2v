@@ -40,7 +40,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.validatorsSchema = void 0;
+exports.genKey = exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.validatorsSchema = void 0;
 var Docker = require("dockerode");
 var SSHPromise = require("ssh2-promise");
 /* eslint-disable-next-line */
@@ -428,6 +428,16 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
     });
 }); };
 exports.buildImage = buildImage;
+var genKey = function (prefix, nodeId, log) {
+    if (!shelljs_1.default.which("openssl")) {
+        throw new Error("`openssl` is required by this command");
+    }
+    var keyFile = path_1.default.join(prefix, nodeId + ".key");
+    var crtFile = path_1.default.join(prefix, nodeId + ".crt");
+    shelljs_1.default.exec("openssl req -x509 -nodes -newkey rsa:4096 -keyout " + keyFile + " -out " + crtFile + " -days 3650 -subj '/'");
+    log.write("generated " + keyFile + " and " + crtFile);
+};
+exports.genKey = genKey;
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
@@ -452,7 +462,7 @@ var main = function () {
             describe: "Host ID (optional, empty to include all hosts)",
         });
     };
-    var getHostStakerId = function (y) {
+    var getHostNodeId = function (y) {
         return y
             .positional("hostid", {
             type: "string",
@@ -460,14 +470,20 @@ var main = function () {
         })
             .positional("nodeid", {
             type: "string",
-            describe: "Staker ID (optional, empty to include all validators)",
+            describe: "Node ID (optional, empty to include all validators)",
         });
     };
-    var getHostStakerId2 = function (y) {
-        return getHostStakerId(y).option("force", {
+    var getHostNodeId2 = function (y) {
+        return getHostNodeId(y).option("force", {
             alias: "f",
             type: "boolean",
             default: false,
+        });
+    };
+    var getNodeId = function (y) {
+        return y.positional("nodeid", {
+            type: "string",
+            describe: "Node ID (prefix for the .crt and .key files)",
         });
     };
     /* eslint-enable @typescript-eslint/no-unsafe-call */
@@ -498,7 +514,7 @@ var main = function () {
         }); };
     };
     yargs_1.default(helpers_1.hideBin(process.argv))
-        .command("run [host-id] [node-id]", "start the container(s) on the given host", getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        .command("run [host-id] [node-id]", "start the container(s) on the given host", getHostNodeId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -534,7 +550,7 @@ var main = function () {
             }
         });
     }); }))
-        .command("stop [host-id] [node-id] [--force]", "stop the container(s) on the given host", getHostStakerId2, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        .command("stop [host-id] [node-id] [--force]", "stop the container(s) on the given host", getHostNodeId2, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -606,7 +622,7 @@ var main = function () {
             }
         });
     }); }))
-        .command("show [host-id] [node-id]", "show validators on the given host", getHostStakerId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        .command("show [host-id] [node-id]", "show validators on the given host", getHostNodeId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
             switch (_c.label) {
@@ -642,6 +658,21 @@ var main = function () {
                     _c.label = 7;
                 case 7: return [2 /*return*/];
             }
+        });
+    }); }))
+        .command("genKey <node-id>", "randomly generate a new <node-id>.key and <node-id>.crt", getNodeId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var keysDir, config;
+        return __generator(this, function (_a) {
+            keysDir = "./";
+            try {
+                config = getConfig(argv.profile);
+                keysDir = config.keysDir;
+            }
+            catch (e) {
+                log.write("profile file not found, generating to the current working directory\n");
+            }
+            exports.genKey(keysDir, argv.nodeId, log);
+            return [2 /*return*/, Promise.resolve()];
         });
     }); }))
         .option("profile", {

@@ -337,6 +337,22 @@ export const buildImage = async (
     log.write(`Finished building image ${tag}.\n`);
 };
 
+export const genKey = (
+    prefix: string,
+    nodeId: string,
+    log: stream.Writable
+): void => {
+    if (!shell.which("openssl")) {
+        throw new Error("`openssl` is required by this command");
+    }
+    const keyFile = path.join(prefix, `${nodeId}.key`);
+    const crtFile = path.join(prefix, `${nodeId}.crt`);
+    shell.exec(
+        `openssl req -x509 -nodes -newkey rsa:4096 -keyout ${keyFile} -out ${crtFile} -days 3650 -subj '/'`
+    );
+    log.write(`generated ${keyFile} and ${crtFile}`);
+};
+
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
@@ -365,7 +381,7 @@ const main = () => {
             type: "string",
             describe: "Host ID (optional, empty to include all hosts)",
         });
-    const getHostStakerId = (y: any) =>
+    const getHostNodeId = (y: any) =>
         y
             .positional("hostid", {
                 type: "string",
@@ -373,14 +389,18 @@ const main = () => {
             })
             .positional("nodeid", {
                 type: "string",
-                describe:
-                    "Staker ID (optional, empty to include all validators)",
+                describe: "Node ID (optional, empty to include all validators)",
             });
-    const getHostStakerId2 = (y: any) =>
-        getHostStakerId(y).option("force", {
+    const getHostNodeId2 = (y: any) =>
+        getHostNodeId(y).option("force", {
             alias: "f",
             type: "boolean",
             default: false,
+        });
+    const getNodeId = (y: any) =>
+        y.positional("nodeid", {
+            type: "string",
+            describe: "Node ID (prefix for the .crt and .key files)",
         });
     /* eslint-enable @typescript-eslint/no-unsafe-call */
     /* eslint-enable @typescript-eslint/no-unsafe-return */
@@ -403,7 +423,7 @@ const main = () => {
         .command(
             "run [host-id] [node-id]",
             "start the container(s) on the given host",
-            getHostStakerId,
+            getHostNodeId,
             wrapHandler(async (argv: any) => {
                 if (argv.hostId === undefined) {
                     const config = getConfig(argv.profile);
@@ -422,7 +442,7 @@ const main = () => {
         .command(
             "stop [host-id] [node-id] [--force]",
             "stop the container(s) on the given host",
-            getHostStakerId2,
+            getHostNodeId2,
             wrapHandler(async (argv: any) => {
                 if (argv.hostId === undefined) {
                     const config = getConfig(argv.profile);
@@ -466,7 +486,7 @@ const main = () => {
         .command(
             "show [host-id] [node-id]",
             "show validators on the given host",
-            getHostStakerId,
+            getHostNodeId,
             wrapHandler(async (argv: any) => {
                 if (argv.hostId === undefined) {
                     const config = getConfig(argv.profile);
@@ -489,6 +509,24 @@ const main = () => {
                         die(`show: node id "${argv.nodeId}" not found`);
                     }
                 }
+            })
+        )
+        .command(
+            "genKey <node-id>",
+            "randomly generate a new <node-id>.key and <node-id>.crt",
+            getNodeId,
+            wrapHandler(async (argv: any) => {
+                let keysDir = "./";
+                try {
+                    const config = getConfig(argv.profile);
+                    keysDir = config.keysDir;
+                } catch (e) {
+                    log.write(
+                        "profile file not found, generating to the current working directory\n"
+                    );
+                }
+                genKey(keysDir, argv.nodeId, log);
+                return Promise.resolve();
             })
         )
         .option("profile", {
