@@ -60,4 +60,26 @@ How to Use
 
      a2v stop <your-host>
 
-- For more usage: ``a2v --help``.
+- For more usage: ``a2v --help``:
+
+  ::
+
+           ___
+     ___ _|_  |  __
+    / _ `/ __/ |/ /
+    \_,_/____/___/    Avalanche Automated Validators
+
+    Commands:
+    a2v run [host-id] [node-id]             start the container(s) on the given host
+    a2v stop [host-id] [node-id] [--force]  stop the container(s) on the given host
+    a2v buildImage [host-id]                build avalanchego image on the given host
+    a2v show [host-id] [node-id]            show validators on the given host
+    a2v showImage [host-id]                 show avalanchego images on the given host
+    a2v rmImage <host-id> <image-tag>       remove the specified avalanchego image on the given host
+    a2v genKey <node-id>                    randomly generate a new <node-id>.key and <node-id>.crt
+    a2v prune [host-id]                     prune unused containers and images on the given host
+
+    Options:
+    --help     Show help                                                                [boolean]
+    -c, --profile  JSON file that describes all validators    [string] [default: "./validators.json"]
+    --version  Show version number                                                      [boolean]
