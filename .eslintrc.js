@@ -86,6 +86,10 @@ module.exports = {
             },
         ],
         "@typescript-eslint/no-unused-expressions": "error",
+        "@typescript-eslint/no-unused-vars": [
+            "error",
+            { argsIgnorePattern: "^_" },
+        ],
         "@typescript-eslint/no-use-before-define": "off",
         "@typescript-eslint/no-var-requires": "error",
         "@typescript-eslint/prefer-for-of": "error",

@@ -40,12 +40,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.genKey = exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.validatorsSchema = void 0;
+exports.prune = exports.rmImage = exports.showImages = exports.genKey = exports.buildImage = exports.showValidators = exports.stop = exports.run = exports.validatorsSchema = void 0;
 var Docker = require("dockerode");
 var SSHPromise = require("ssh2-promise");
 /* eslint-disable-next-line */
 var sshModem = require("docker-modem/lib/ssh");
 var util_1 = __importDefault(require("util"));
+var stream_1 = __importDefault(require("stream"));
 var dns_1 = __importDefault(require("dns"));
 var fs_1 = __importDefault(require("fs"));
 var path_1 = __importDefault(require("path"));
@@ -54,7 +55,7 @@ var ts_json_validator_1 = require("ts-json-validator");
 var shelljs_1 = __importDefault(require("shelljs"));
 var strip_json_comments_1 = __importDefault(require("strip-json-comments"));
 var dnsLookup = util_1.default.promisify(dns_1.default.lookup);
-var yargs_1 = __importDefault(require("yargs/yargs"));
+var yargs_1 = __importDefault(require("yargs"));
 var helpers_1 = require("yargs/helpers");
 exports.validatorsSchema = ts_json_validator_1.createSchema({
     type: "object",
@@ -94,6 +95,7 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
                     ncpu: ts_json_validator_1.createSchema({ type: "number" }),
                     cpuPerNode: ts_json_validator_1.createSchema({ type: "number" }),
                     cpuStride: ts_json_validator_1.createSchema({ type: "number" }),
+                    workDir: ts_json_validator_1.createSchema({ type: "string" }),
                 },
                 required: [
                     "host",
@@ -140,7 +142,7 @@ var getDocker = function (config, id, log) { return __awaiter(void 0, void 0, vo
     });
 }); };
 var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, void 0, function () {
-    var _a, docker, sshConfig, h, host, containers, _b, sshConn, workDir, keysDir, start, end, _loop_1, i;
+    var _a, docker, sshConfig, h, host, containers, _b, sshConn, keysDir, start, end, _loop_1, i;
     return __generator(this, function (_c) {
         switch (_c.label) {
             case 0: return [4 /*yield*/, getDocker(config, id, log)];
@@ -151,7 +153,6 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
             case 2:
                 containers = new (_b.apply(Set, [void 0, (_c.sent()).map(function (e) { return e.Names[0]; })]))();
                 sshConn = new SSHPromise(sshConfig);
-                workDir = config.workDir;
                 keysDir = config.keysDir;
                 start = 0;
                 end = h.validators.length;
@@ -163,7 +164,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                     end = start + 1;
                 }
                 _loop_1 = function (i) {
-                    var v, name_1, stakingPort_1, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, _run;
+                    var v, name_1, workDir_1, stakingPort_1, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, _run;
                     return __generator(this, function (_d) {
                         switch (_d.label) {
                             case 0:
@@ -173,6 +174,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                 log.write("validator " + v + " already exists\n");
                                 return [3 /*break*/, 3];
                             case 1:
+                                workDir_1 = h.workDir || config.workDir;
                                 stakingPort_1 = config.baseStakingPort + i * 2;
                                 httpPort_1 = config.baseHttpPort + i * 2;
                                 affin_1 = [];
@@ -193,7 +195,9 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                     var cmd, key, c;
                                     return __generator(this, function (_a) {
                                         switch (_a.label) {
-                                            case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir + "/" + v + "/")];
+                                            case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir_1 + "/" + v + "/").catch(function (_) {
+                                                    throw new Error("cannot create workDir, check your permission settings");
+                                                })];
                                             case 1:
                                                 _a.sent();
                                                 log.write("starting validator " + v + " on core " + affin_1.join(",") + "\n");
@@ -232,7 +236,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                             CpusetCpus: affin_1.join(","),
                                                             Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
                                                             PortBindings: portBindings_1,
-                                                            Binds: [path_1.default.join(workDir, v) + ":/root/.avalanchego:"],
+                                                            Binds: [path_1.default.join(workDir_1, v) + ":/root/.avalanchego:"],
                                                         },
                                                     })];
                                             case 3:
@@ -415,7 +419,13 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
                                 reject(err);
                             }
                             if (output) {
-                                output.pipe(process.stdout, { end: true });
+                                output
+                                    .pipe(new stream_1.default.Transform({
+                                    transform: function (chunk, encoding, callback) {
+                                        return callback(null, "docker: " + JSON.parse(chunk).stream);
+                                    },
+                                }))
+                                    .pipe(process.stdout);
                                 output.on("end", resolve);
                             }
                         });
@@ -435,9 +445,88 @@ var genKey = function (prefix, nodeId, log) {
     var keyFile = path_1.default.join(prefix, nodeId + ".key");
     var crtFile = path_1.default.join(prefix, nodeId + ".crt");
     shelljs_1.default.exec("openssl req -x509 -nodes -newkey rsa:4096 -keyout " + keyFile + " -out " + crtFile + " -days 3650 -subj '/'");
-    log.write("generated " + keyFile + " and " + crtFile);
+    log.write("generated " + keyFile + " and " + crtFile + "\n");
 };
 exports.genKey = genKey;
+var showImages = function (config, id, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var docker;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, getDocker(config, id, log)];
+            case 1:
+                docker = (_a.sent()).docker;
+                return [4 /*yield*/, docker.listImages({ all: true })];
+            case 2:
+                (_a.sent())
+                    .filter(function (e) { return /avaplatform\/avalanchego:.*/.exec(e.RepoTags[0]); })
+                    .forEach(function (e) {
+                    log.write(e.RepoTags[0] + ": id(" + e.Id + ")\n");
+                });
+                return [2 /*return*/];
+        }
+    });
+}); };
+exports.showImages = showImages;
+var rmImage = function (config, id, imageTag, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var docker, patt, pms;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, getDocker(config, id, log)];
+            case 1:
+                docker = (_a.sent()).docker;
+                patt = /avaplatform\/avalanchego:(.*)/;
+                pms = [];
+                return [4 /*yield*/, docker.listImages({ all: true })];
+            case 2:
+                (_a.sent()).forEach(function (e) {
+                    var m = patt.exec(e.RepoTags[0]);
+                    if (m == null)
+                        return;
+                    if (m[1] === imageTag) {
+                        pms.push(docker.getImage(e.Id).remove());
+                        log.write("removed " + e.RepoTags[0] + "\n");
+                    }
+                });
+                return [4 /*yield*/, Promise.all(pms)];
+            case 3:
+                _a.sent();
+                return [2 /*return*/];
+        }
+    });
+}); };
+exports.rmImage = rmImage;
+var prune = function (config, id, log) { return __awaiter(void 0, void 0, void 0, function () {
+    var docker, prunedContainers, prunedImages;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, getDocker(config, id, log)];
+            case 1:
+                docker = (_a.sent()).docker;
+                return [4 /*yield*/, docker.pruneContainers()];
+            case 2:
+                prunedContainers = (_a.sent()).ContainersDeleted;
+                if (prunedContainers) {
+                    prunedContainers.forEach(function (e) { return log.write("pruned container " + e + "\n"); });
+                }
+                else {
+                    log.write("no containers are pruned\n");
+                }
+                return [4 /*yield*/, docker.pruneImages()];
+            case 3:
+                prunedImages = (_a.sent()).ImagesDeleted;
+                if (prunedImages) {
+                    prunedImages.forEach(function (e) {
+                        return log.write("pruned image (" + e.Deleted + ", " + e.Untagged + ")\n");
+                    });
+                }
+                else {
+                    log.write("no images are pruned\n");
+                }
+                return [2 /*return*/];
+        }
+    });
+}); };
+exports.prune = prune;
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
@@ -457,20 +546,15 @@ var main = function () {
     /* eslint-disable @typescript-eslint/no-unsafe-call */
     /* eslint-disable @typescript-eslint/no-unsafe-return */
     var getHostId = function (y) {
-        return y.positional("hostid", {
+        return y.positional("host-id", {
             type: "string",
-            describe: "Host ID (optional, empty to include all hosts)",
+            describe: "Host ID (empty to include all hosts)",
         });
     };
     var getHostNodeId = function (y) {
-        return y
-            .positional("hostid", {
+        return getHostId(y).positional("node-id", {
             type: "string",
-            describe: "Host ID (optional, empty to include all hosts)",
-        })
-            .positional("nodeid", {
-            type: "string",
-            describe: "Node ID (optional, empty to include all validators)",
+            describe: "Node ID (empty to include all validators)",
         });
     };
     var getHostNodeId2 = function (y) {
@@ -481,9 +565,15 @@ var main = function () {
         });
     };
     var getNodeId = function (y) {
-        return y.positional("nodeid", {
+        return y.positional("node-id", {
             type: "string",
             describe: "Node ID (prefix for the .crt and .key files)",
+        });
+    };
+    var getHostImageId = function (y) {
+        return getHostId(y).positional("image-tag", {
+            type: "string",
+            describe: 'Image Tag (the same thing used in "release" field, e.g. v1.4.0)',
         });
     };
     /* eslint-enable @typescript-eslint/no-unsafe-call */
@@ -514,6 +604,7 @@ var main = function () {
         }); };
     };
     yargs_1.default(helpers_1.hideBin(process.argv))
+        .usage("        ___\n  ___ _|_  |  __\n / _ `/ __/ |/ /\n \\_,_/____/___/    Avalanche Automated Validators")
         .command("run [host-id] [node-id]", "start the container(s) on the given host", getHostNodeId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var config, _a, _b, _i, id, config;
         return __generator(this, function (_c) {
@@ -660,6 +751,58 @@ var main = function () {
             }
         });
     }); }))
+        .command("showImage [host-id]", "show avalanchego images on the given host", getHostId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config, _a, _b, _i, id, config;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
+                case 0:
+                    if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
+                    config = getConfig(argv.profile);
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
+                case 1:
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, exports.showImages(config, id, log)];
+                case 2:
+                    _c.sent();
+                    _c.label = 3;
+                case 3:
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [3 /*break*/, 7];
+                case 5:
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("showImage: host id \"" + argv.hostId + "\" not found");
+                    }
+                    return [4 /*yield*/, exports.showImages(config, argv.hostId, log)];
+                case 6:
+                    _c.sent();
+                    _c.label = 7;
+                case 7: return [2 /*return*/];
+            }
+        });
+    }); }))
+        .command("rmImage <host-id> <image-tag>", "remove the specified avalanchego image on the given host", getHostImageId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("rmImage: host id \"" + argv.hostId + "\" not found");
+                    }
+                    return [4 /*yield*/, exports.rmImage(config, argv.hostId, argv.imageTag, log)];
+                case 1:
+                    _a.sent();
+                    return [2 /*return*/];
+            }
+        });
+    }); }))
         .command("genKey <node-id>", "randomly generate a new <node-id>.key and <node-id>.crt", getNodeId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
         var keysDir, config;
         return __generator(this, function (_a) {
@@ -675,6 +818,42 @@ var main = function () {
             return [2 /*return*/, Promise.resolve()];
         });
     }); }))
+        .command("prune [host-id]", "prune unused containers and images on the given host", getHostId, wrapHandler(function (argv) { return __awaiter(void 0, void 0, void 0, function () {
+        var config, _a, _b, _i, id, config;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
+                case 0:
+                    if (!(argv.hostId === undefined)) return [3 /*break*/, 5];
+                    config = getConfig(argv.profile);
+                    _a = [];
+                    for (_b in config.hosts)
+                        _a.push(_b);
+                    _i = 0;
+                    _c.label = 1;
+                case 1:
+                    if (!(_i < _a.length)) return [3 /*break*/, 4];
+                    id = _a[_i];
+                    return [4 /*yield*/, exports.prune(config, id, log)];
+                case 2:
+                    _c.sent();
+                    _c.label = 3;
+                case 3:
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 4: return [3 /*break*/, 7];
+                case 5:
+                    config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die("showImage: host id \"" + argv.hostId + "\" not found");
+                    }
+                    return [4 /*yield*/, exports.prune(config, argv.hostId, log)];
+                case 6:
+                    _c.sent();
+                    _c.label = 7;
+                case 7: return [2 /*return*/];
+            }
+        });
+    }); }))
         .option("profile", {
         alias: "c",
         type: "string",
@@ -684,6 +863,8 @@ var main = function () {
         .strict()
         .showHelpOnFail(true)
         .demandCommand()
+        .wrap(yargs_1.default.terminalWidth())
+        .version()
         .parse();
 };
 /* eslint-enable @typescript-eslint/no-unsafe-member-access */

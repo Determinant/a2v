@@ -14,7 +14,7 @@ import shell from "shelljs";
 import stripJsonComments from "strip-json-comments";
 const dnsLookup = util.promisify(dns.lookup);
 
-import yargs from "yargs/yargs";
+import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 export const validatorsSchema = S({
@@ -56,6 +56,7 @@ export const validatorsSchema = S({
                     ncpu: S({ type: "number" }),
                     cpuPerNode: S({ type: "number" }),
                     cpuStride: S({ type: "number" }),
+                    workDir: S({ type: "string" }),
                 },
                 required: [
                     "host",
@@ -110,7 +111,6 @@ export const run = async (
         (await docker.listContainers({ all: true })).map((e) => e.Names[0])
     );
     const sshConn = new SSHPromise(sshConfig);
-    const workDir = config.workDir;
     const keysDir = config.keysDir as string;
 
     let start = 0;
@@ -130,6 +130,7 @@ export const run = async (
         if (containers.has("/" + name)) {
             log.write(`validator ${v} already exists\n`);
         } else {
+            const workDir = h.workDir || config.workDir;
             const stakingPort = (config.baseStakingPort as number) + i * 2;
             const httpPort = (config.baseHttpPort as number) + i * 2;
             const affin = [] as number[];
@@ -153,7 +154,11 @@ export const run = async (
 
             /* eslint-disable no-underscore-dangle */
             const _run = async () => {
-                await sshConn.exec(`mkdir -p ${workDir}/${v}/`);
+                await sshConn.exec(`mkdir -p ${workDir}/${v}/`).catch((_) => {
+                    throw new Error(
+                        "cannot create workDir, check your permission settings"
+                    );
+                });
                 log.write(
                     `starting validator ${v} on core ${affin.join(",")}\n`
                 );
@@ -329,7 +334,21 @@ export const buildImage = async (
                 reject(err);
             }
             if (output) {
-                output.pipe(process.stdout, { end: true });
+                output
+                    .pipe(
+                        new stream.Transform({
+                            transform: (chunk, encoding, callback) =>
+                                callback(
+                                    null,
+                                    `docker: ${
+                                        (JSON.parse(chunk) as {
+                                            stream: string;
+                                        }).stream
+                                    }`
+                                ),
+                        })
+                    )
+                    .pipe(process.stdout);
                 output.on("end", resolve);
             }
         });
@@ -350,7 +369,62 @@ export const genKey = (
     shell.exec(
         `openssl req -x509 -nodes -newkey rsa:4096 -keyout ${keyFile} -out ${crtFile} -days 3650 -subj '/'`
     );
-    log.write(`generated ${keyFile} and ${crtFile}`);
+    log.write(`generated ${keyFile} and ${crtFile}\n`);
+};
+
+export const showImages = async (
+    config: Validated<typeof validatorsSchema>,
+    id: string,
+    log: stream.Writable
+): Promise<void> => {
+    const { docker } = await getDocker(config, id, log);
+    (await docker.listImages({ all: true }))
+        .filter((e) => /avaplatform\/avalanchego:.*/.exec(e.RepoTags[0]))
+        .forEach((e) => {
+            log.write(`${e.RepoTags[0]}: id(${e.Id})\n`);
+        });
+};
+
+export const rmImage = async (
+    config: Validated<typeof validatorsSchema>,
+    id: string,
+    imageTag: string,
+    log: stream.Writable
+): Promise<void> => {
+    const { docker } = await getDocker(config, id, log);
+    const patt = /avaplatform\/avalanchego:(.*)/;
+    const pms: Promise<void>[] = [];
+    (await docker.listImages({ all: true })).forEach((e) => {
+        const m = patt.exec(e.RepoTags[0]);
+        if (m == null) return;
+        if (m[1] === imageTag) {
+            pms.push(docker.getImage(e.Id).remove());
+            log.write(`removed ${e.RepoTags[0]}\n`);
+        }
+    });
+    await Promise.all(pms);
+};
+
+export const prune = async (
+    config: Validated<typeof validatorsSchema>,
+    id: string,
+    log: stream.Writable
+): Promise<void> => {
+    const { docker } = await getDocker(config, id, log);
+    const prunedContainers = (await docker.pruneContainers()).ContainersDeleted;
+    if (prunedContainers) {
+        prunedContainers.forEach((e) => log.write(`pruned container ${e}\n`));
+    } else {
+        log.write(`no containers are pruned\n`);
+    }
+    const prunedImages = (await docker.pruneImages()).ImagesDeleted;
+    if (prunedImages) {
+        prunedImages.forEach((e) =>
+            log.write(`pruned image (${e.Deleted}, ${e.Untagged})\n`)
+        );
+    } else {
+        log.write(`no images are pruned\n`);
+    }
 };
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -377,20 +451,15 @@ const main = () => {
     /* eslint-disable @typescript-eslint/no-unsafe-call */
     /* eslint-disable @typescript-eslint/no-unsafe-return */
     const getHostId = (y: any) =>
-        y.positional("hostid", {
+        y.positional("host-id", {
             type: "string",
-            describe: "Host ID (optional, empty to include all hosts)",
+            describe: "Host ID (empty to include all hosts)",
         });
     const getHostNodeId = (y: any) =>
-        y
-            .positional("hostid", {
-                type: "string",
-                describe: "Host ID (optional, empty to include all hosts)",
-            })
-            .positional("nodeid", {
-                type: "string",
-                describe: "Node ID (optional, empty to include all validators)",
-            });
+        getHostId(y).positional("node-id", {
+            type: "string",
+            describe: "Node ID (empty to include all validators)",
+        });
     const getHostNodeId2 = (y: any) =>
         getHostNodeId(y).option("force", {
             alias: "f",
@@ -398,9 +467,15 @@ const main = () => {
             default: false,
         });
     const getNodeId = (y: any) =>
-        y.positional("nodeid", {
+        y.positional("node-id", {
             type: "string",
             describe: "Node ID (prefix for the .crt and .key files)",
+        });
+    const getHostImageId = (y: any) =>
+        getHostId(y).positional("image-tag", {
+            type: "string",
+            describe:
+                'Image Tag (the same thing used in "release" field, e.g. v1.4.0)',
         });
     /* eslint-enable @typescript-eslint/no-unsafe-call */
     /* eslint-enable @typescript-eslint/no-unsafe-return */
@@ -420,6 +495,12 @@ const main = () => {
     };
 
     yargs(hideBin(process.argv))
+        .usage(
+            `        ___
+  ___ _|_  |  __
+ / _ \`/ __/ |/ /
+ \\_,_/____/___/    Avalanche Automated Validators`
+        )
         .command(
             "run [host-id] [node-id]",
             "start the container(s) on the given host",
@@ -512,6 +593,37 @@ const main = () => {
             })
         )
         .command(
+            "showImage [host-id]",
+            "show avalanchego images on the given host",
+            getHostId,
+            wrapHandler(async (argv: any) => {
+                if (argv.hostId === undefined) {
+                    const config = getConfig(argv.profile);
+                    for (const id in config.hosts) {
+                        await showImages(config, id, log);
+                    }
+                } else {
+                    const config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die(`showImage: host id "${argv.hostId}" not found`);
+                    }
+                    await showImages(config, argv.hostId, log);
+                }
+            })
+        )
+        .command(
+            "rmImage <host-id> <image-tag>",
+            "remove the specified avalanchego image on the given host",
+            getHostImageId,
+            wrapHandler(async (argv: any) => {
+                const config = getConfig(argv.profile);
+                if (!(argv.hostId in config.hosts)) {
+                    die(`rmImage: host id "${argv.hostId}" not found`);
+                }
+                await rmImage(config, argv.hostId, argv.imageTag, log);
+            })
+        )
+        .command(
             "genKey <node-id>",
             "randomly generate a new <node-id>.key and <node-id>.crt",
             getNodeId,
@@ -529,6 +641,25 @@ const main = () => {
                 return Promise.resolve();
             })
         )
+        .command(
+            "prune [host-id]",
+            "prune unused containers and images on the given host",
+            getHostId,
+            wrapHandler(async (argv: any) => {
+                if (argv.hostId === undefined) {
+                    const config = getConfig(argv.profile);
+                    for (const id in config.hosts) {
+                        await prune(config, id, log);
+                    }
+                } else {
+                    const config = getConfig(argv.profile);
+                    if (!(argv.hostId in config.hosts)) {
+                        die(`showImage: host id "${argv.hostId}" not found`);
+                    }
+                    await prune(config, argv.hostId, log);
+                }
+            })
+        )
         .option("profile", {
             alias: "c",
             type: "string",
@@ -538,6 +669,8 @@ const main = () => {
         .strict()
         .showHelpOnFail(true)
         .demandCommand()
+        .wrap(yargs.terminalWidth())
+        .version()
         .parse();
 };
 /* eslint-enable @typescript-eslint/no-unsafe-member-access */

@@ -10,10 +10,12 @@
     // you don't need all them, just as an example of three hosts, each having different numbers of validators
     "hosts": {
         "example": {
-            "host": "13.229.114.242",
-            "username": "ubuntu",
+            "host": "localhost",
+            "username": "ymf",
+            // you can override the global workDir here
+            "workDir": "/tmp/stakers",
             // absolute path or relative path to this file
-            "privateKeyFile": "./your-aws-key.pem",
+            "privateKeyFile": "/home/ymf/.ssh/id_rsa",
             "validators": ["mystaker"],
             // number of cores
             "ncpu": 2,
