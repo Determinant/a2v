@@ -13,6 +13,7 @@ How to Use
 - First make sure you have one or more Docker hosts (servers) running, with SSH
   access of them. An example is to launch an Ubuntu instance on AWS EC2. The
   following commands are run on the host to setup (only need to setup once):
+
   - install ``sudo apt update && sudo apt install docker.io``;
   - add ``ubuntu`` to ``docker`` group: ``sudo gpasswd -a ubuntu docker``;
   - start Docker: ``sudo systemctl start docker && sudo systemctl enable docker``.
