@@ -61,6 +61,9 @@ How to Use
 
      a2v stop <your-host>
 
+- To auto restart validators on crashes, just add ``a2v run -c <your-validators.json>`` to your crontab,
+  as it will only start validators if they're not running.
+
 - For more usage: ``a2v --help``:
 
   ::
