@@ -202,7 +202,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                 _a.sent();
                                                 log.write("starting validator " + v + " on core " + affin_1.join(",") + "\n");
                                                 cmd = [
-                                                    "./build/avalanchego",
+                                                    "/avalanchego/build/avalanchego",
                                                     "--public-ip",
                                                     "" + host,
                                                     "--staking-port",

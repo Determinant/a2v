@@ -163,7 +163,7 @@ export const run = async (
                     `starting validator ${v} on core ${affin.join(",")}\n`
                 );
                 const cmd = [
-                    "./build/avalanchego",
+                    "/avalanchego/build/avalanchego",
                     "--public-ip",
                     `${host}`,
                     "--staking-port",
