@@ -178,7 +178,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                             case 1:
                                 workDir_1 = h.workDir || config.workDir;
                                 stakingPort_1 = config.baseStakingPort + i * 2;
-                                httpHost = (config.publicHttp !== undefined ? config.publicHttp : h.publicHttp) ? "0.0.0.0" : "127.0.0.1";
+                                httpHost = (h.publicHttp !== undefined ? h.publicHttp : config.publicHttp) ? "0.0.0.0" : "127.0.0.1";
                                 httpPort_1 = config.baseHttpPort + i * 2;
                                 affin_1 = [];
                                 cpuPerNode = h.cpuPerNode;

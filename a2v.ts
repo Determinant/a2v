@@ -134,7 +134,7 @@ export const run = async (
         } else {
             const workDir = h.workDir || config.workDir;
             const stakingPort = (config.baseStakingPort as number) + i * 2;
-            const httpHost = (config.publicHttp !== undefined ? config.publicHttp : h.publicHttp) ? "0.0.0.0" : "127.0.0.1";
+            const httpHost = (h.publicHttp !== undefined ? h.publicHttp : config.publicHttp) ? "0.0.0.0" : "127.0.0.1";
             const httpPort = (config.baseHttpPort as number) + i * 2;
             const affin = [] as number[];
             const cpuPerNode = h.cpuPerNode as number;
