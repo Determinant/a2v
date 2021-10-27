@@ -80,6 +80,7 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
             type: "number",
             title: "base port number for JSON/RPC",
         }),
+        publicHttp: ts_json_validator_1.createSchema({ type: "boolean" }),
         hosts: ts_json_validator_1.createSchema({
             type: "object",
             additionalProperties: ts_json_validator_1.createSchema({
@@ -96,6 +97,7 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
                     cpuPerNode: ts_json_validator_1.createSchema({ type: "number" }),
                     cpuStride: ts_json_validator_1.createSchema({ type: "number" }),
                     workDir: ts_json_validator_1.createSchema({ type: "string" }),
+                    publicHttp: ts_json_validator_1.createSchema({ type: "boolean" }),
                 },
                 required: [
                     "host",
@@ -164,7 +166,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                     end = start + 1;
                 }
                 _loop_1 = function (i) {
-                    var v, name_1, workDir_1, stakingPort_1, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, _run;
+                    var v, name_1, workDir_1, stakingPort_1, httpHost, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, _run;
                     return __generator(this, function (_d) {
                         switch (_d.label) {
                             case 0:
@@ -176,6 +178,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                             case 1:
                                 workDir_1 = h.workDir || config.workDir;
                                 stakingPort_1 = config.baseStakingPort + i * 2;
+                                httpHost = (config.publicHttp !== undefined ? config.publicHttp : h.publicHttp) ? "0.0.0.0" : "127.0.0.1";
                                 httpPort_1 = config.baseHttpPort + i * 2;
                                 affin_1 = [];
                                 cpuPerNode = h.cpuPerNode;
@@ -190,7 +193,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                 portBindings_1[stakingPort_1 + "/tcp"] = [
                                     { HostPort: "" + stakingPort_1 },
                                 ];
-                                portBindings_1[httpPort_1 + "/tcp"] = [{ HostPort: "" + httpPort_1 }];
+                                portBindings_1[httpPort_1 + "/tcp"] = [{ HostIp: "" + httpHost, HostPort: "" + httpPort_1 }];
                                 _run = function () { return __awaiter(void 0, void 0, void 0, function () {
                                     var cmd, key, c;
                                     return __generator(this, function (_a) {

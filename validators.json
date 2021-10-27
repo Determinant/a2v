@@ -1,12 +1,13 @@
 {
     // the release of avalanchego being used
-    "release": "v1.4.2",
+    "release": "v1.6.2",
     // path to the directory root that holds all databases and logs for validators, on the host
     "workDir": "/bigboy/stakers",
     // absolute path or relative path to this file, the directory that holds all validator crendentials
     "keysDir": "./keys",
     "baseStakingPort": 9651,
     "baseHttpPort": 9650,
+    "publicHttp": false,
     // you don't need all them, just as an example of three hosts, each having different numbers of validators
     "hosts": {
         "example": {

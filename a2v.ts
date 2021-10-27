@@ -41,6 +41,7 @@ export const validatorsSchema = S({
             type: "number",
             title: "base port number for JSON/RPC",
         }),
+        publicHttp: S({ type: "boolean" }),
         hosts: S({
             type: "object",
             additionalProperties: S({
@@ -57,6 +58,7 @@ export const validatorsSchema = S({
                     cpuPerNode: S({ type: "number" }),
                     cpuStride: S({ type: "number" }),
                     workDir: S({ type: "string" }),
+                    publicHttp: S({ type: "boolean" }),
                 },
                 required: [
                     "host",
@@ -132,6 +134,7 @@ export const run = async (
         } else {
             const workDir = h.workDir || config.workDir;
             const stakingPort = (config.baseStakingPort as number) + i * 2;
+            const httpHost = (config.publicHttp !== undefined ? config.publicHttp : h.publicHttp) ? "0.0.0.0" : "127.0.0.1";
             const httpPort = (config.baseHttpPort as number) + i * 2;
             const affin = [] as number[];
             const cpuPerNode = h.cpuPerNode as number;
@@ -143,13 +146,13 @@ export const run = async (
             const exposedPorts: {
                 [key: string]: { [key: string]: Record<string, never> };
             } = {};
-            const portBindings: { [key: string]: [{ HostPort: string }] } = {};
+            const portBindings: { [key: string]: [{ HostIp?: string, HostPort: string }] } = {};
             exposedPorts[`${stakingPort}/tcp`] = {};
             exposedPorts[`${httpPort}/tcp`] = {};
             portBindings[`${stakingPort}/tcp`] = [
                 { HostPort: `${stakingPort}` },
             ];
-            portBindings[`${httpPort}/tcp`] = [{ HostPort: `${httpPort}` }];
+            portBindings[`${httpPort}/tcp`] = [{ HostIp: `${httpHost}`, HostPort: `${httpPort}` }];
             /* eslint-enable @typescript-eslint/naming-convention */
 
             /* eslint-disable no-underscore-dangle */
