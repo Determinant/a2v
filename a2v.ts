@@ -59,6 +59,8 @@ export const validatorsSchema = S({
                     cpuStride: S({ type: "number" }),
                     workDir: S({ type: "string" }),
                     publicHttp: S({ type: "boolean" }),
+                    baseStakingPort: S({ type: "number" }),
+                    baseHttpPort: S({ type: "number" }),
                 },
                 required: [
                     "host",
@@ -133,9 +135,9 @@ export const run = async (
             log.write(`validator ${v} already exists\n`);
         } else {
             const workDir = h.workDir || config.workDir;
-            const stakingPort = (config.baseStakingPort as number) + i * 2;
+            const stakingPort = (h.baseStakingPort !== undefined ? h.baseStakingPort : config.baseStakingPort) + i * 2;
             const httpHost = (h.publicHttp !== undefined ? h.publicHttp : config.publicHttp) ? "0.0.0.0" : "127.0.0.1";
-            const httpPort = (config.baseHttpPort as number) + i * 2;
+            const httpPort = (h.baseHttpPort !== undefined ? h.baseHttpPort : config.baseHttpPort) + i * 2;
             const affin = [] as number[];
             const cpuPerNode = h.cpuPerNode as number;
             const cpuStride = h.cpuStride as number;

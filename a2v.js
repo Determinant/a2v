@@ -98,6 +98,8 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
                     cpuStride: ts_json_validator_1.createSchema({ type: "number" }),
                     workDir: ts_json_validator_1.createSchema({ type: "string" }),
                     publicHttp: ts_json_validator_1.createSchema({ type: "boolean" }),
+                    baseStakingPort: ts_json_validator_1.createSchema({ type: "number" }),
+                    baseHttpPort: ts_json_validator_1.createSchema({ type: "number" }),
                 },
                 required: [
                     "host",
@@ -177,9 +179,9 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                 return [3 /*break*/, 3];
                             case 1:
                                 workDir_1 = h.workDir || config.workDir;
-                                stakingPort_1 = config.baseStakingPort + i * 2;
+                                stakingPort_1 = (h.baseStakingPort !== undefined ? h.baseStakingPort : config.baseStakingPort) + i * 2;
                                 httpHost = (h.publicHttp !== undefined ? h.publicHttp : config.publicHttp) ? "0.0.0.0" : "127.0.0.1";
-                                httpPort_1 = config.baseHttpPort + i * 2;
+                                httpPort_1 = (h.baseHttpPort !== undefined ? h.baseHttpPort : config.baseHttpPort) + i * 2;
                                 affin_1 = [];
                                 cpuPerNode = h.cpuPerNode;
                                 cpuStride = h.cpuStride;
