@@ -7,6 +7,7 @@ import util from "util";
 import stream from "stream";
 import dns from "dns";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import tar from "tar";
 import { createSchema as S, TsjsonParser, Validated } from "ts-json-validator";
@@ -32,6 +33,10 @@ export const validatorsSchema = S({
         keysDir: S({
             type: "string",
             title: "the directory of all keys/certs",
+        }),
+        stakingKeysDir: S({
+            type: "string",
+            title: "the directory of staking keys (BLS)",
         }),
         baseStakingPort: S({
             type: "number",
@@ -157,8 +162,7 @@ export const run = async (
             portBindings[`${httpPort}/tcp`] = [{ HostIp: `${httpHost}`, HostPort: `${httpPort}` }];
             /* eslint-enable @typescript-eslint/naming-convention */
 
-            /* eslint-disable no-underscore-dangle */
-            const _run = async () => {
+            const runValidator = async () => {
                 await sshConn.exec(`mkdir -p ${workDir}/${v}/`).catch((_) => {
                     throw new Error(
                         "cannot create workDir, check your permission settings"
@@ -167,6 +171,22 @@ export const run = async (
                 log.write(
                     `starting validator ${v} on core ${affin.join(",")}\n`
                 );
+
+                const tempKeysDir = fs.mkdtempSync(path.join(os.tmpdir(), "a2v-keys-"));
+                shell.cp(path.join(keysDir, `${v}.crt`), path.join(tempKeysDir, `${v}.crt`));
+                shell.cp(path.join(keysDir, `${v}.key`), path.join(tempKeysDir, `${v}.key`));
+
+                let blsKeyArg: string[] = [];
+                if (config.stakingKeysDir) {
+                    const blsKeyNameAlt = `${v}.bls.key`;
+                    const blsSourceAlt = path.join(config.stakingKeysDir, blsKeyNameAlt);
+
+                    if (fs.existsSync(blsSourceAlt)) {
+                        shell.cp(blsSourceAlt, path.join(tempKeysDir, `${v}.bls.key`));
+                        blsKeyArg = ["--staking-signer-key-file", `/staking/${v}.bls.key`];
+                    }
+                }
+
                 const cmd = [
                     "/avalanchego/build/avalanchego",
                     "--public-ip",
@@ -181,14 +201,15 @@ export const run = async (
                     `/staking/${v}.crt`,
                     "--staking-tls-key-file",
                     `/staking/${v}.key`,
+                    ...blsKeyArg,
                 ];
+
+                const tarFileName = path.join(keysDir, `${v}.tar`);
                 const key = tar
-                    .c({ cwd: keysDir, prefix: "./staking" }, [
-                        `./${v}.crt`,
-                        `./${v}.key`,
-                    ])
-                    .pipe(fs.createWriteStream(`${path.join(keysDir, v)}.tar`));
+                    .c({ cwd: tempKeysDir, prefix: "./staking" }, fs.readdirSync(tempKeysDir))
+                    .pipe(fs.createWriteStream(tarFileName));
                 await new Promise((fulfill) => key.on("finish", fulfill));
+                shell.rm("-rf", tempKeysDir);
 
                 /* eslint-disable @typescript-eslint/naming-convention */
                 const c = await docker.createContainer({
@@ -206,15 +227,14 @@ export const run = async (
                     },
                 });
                 /* eslint-enable @typescript-eslint/naming-convention */
-                await c.putArchive(`${path.join(keysDir, v)}.tar`, {
+                await c.putArchive(tarFileName, {
                     path: "/",
                 });
                 await c.start().then(() => {
                     log.write(`started validator ${v}\n`);
                 });
             };
-            /* eslint-enable no-underscore-dangle */
-            await _run();
+            await runValidator();
             // pms.push(start());
         }
     }
@@ -317,44 +337,74 @@ export const buildImage = async (
     const gopath = "./.build_image_gopath";
     const workprefix = path.join(gopath, "src", "github.com/ava-labs");
     shell.rm("-rf", workprefix);
+    shell.mkdir("-p", workprefix);
     const avalancheClone = path.join(workprefix, "avalanchego");
-    shell.exec("git config --global crendential.helper cache");
+    shell.exec("git config --global credential.helper cache");
     shell.exec(
         `git clone "${remote}" "${avalancheClone}" --depth=1 -b ${branch}`
     );
     shell.exec(
         `sed -i 's/^\.git$//g' '${path.join(avalancheClone, ".dockerignore")}'`
     );
-    const tarDockerFile = path.join(avalancheClone, "avalanchego.tar");
+    shell.exec(
+        `sed -i 's/--platform=\\$BUILDPLATFORM //g' '${path.join(avalancheClone, "Dockerfile")}'`
+    );
+    // Create tar outside the source directory to avoid including it in itself
+    const tarDockerFile = path.join(gopath, "avalanchego.tar");
     const tag = `${dockerhubRepo}:${branch}`;
+
+    log.write(`Creating tar archive at ${tarDockerFile}...\n`);
     const key = tar
         .c({ cwd: avalancheClone }, [`.`])
         .pipe(fs.createWriteStream(tarDockerFile));
     await new Promise((fulfill) => key.on("finish", fulfill));
+    log.write(`Tar created, reading into memory...\n`);
+
+    // Create a readable stream from the file
+    const tarStream = fs.createReadStream(tarDockerFile);
 
     const { docker } = await getDocker(config, id, log);
-    await new Promise((resolve, reject) => {
-        docker.buildImage(tarDockerFile, { t: tag }, (err, output) => {
+    log.write(`Sending to Docker daemon...\n`);
+
+    await new Promise<void>((resolve, reject) => {
+        /* eslint-disable @typescript-eslint/naming-convention */
+        void docker.buildImage(tarStream, { t: tag, buildargs: { GO_VERSION: "1.24.11" } }, (err: Error | null, output: NodeJS.ReadableStream | undefined) => {
+            /* eslint-enable @typescript-eslint/naming-convention */
             if (err) {
+                log.write(`Build error: ${err.message}\n`);
                 reject(err);
+                return;
             }
             if (output) {
-                output
-                    .pipe(
-                        new stream.Transform({
-                            transform: (chunk, encoding, callback) =>
-                                callback(
-                                    null,
-                                    `docker: ${
-                                        (JSON.parse(chunk) as {
-                                            stream: string;
-                                        }).stream
-                                    }`
-                                ),
-                        })
-                    )
-                    .pipe(process.stdout);
+                output.pipe(
+                    new stream.Transform({
+                        transform(chunk: Buffer, encoding, callback) {
+                            try {
+                                const data = JSON.parse(chunk.toString()) as {
+                                    stream?: string;
+                                    error?: string;
+                                    errorDetail?: unknown;
+                                };
+                                if (data.stream) {
+                                    this.push(`docker: ${data.stream}`);
+                                } else if (data.error) {
+                                    this.push(`docker error: ${data.error}\n`);
+                                } else if (data.errorDetail) {
+                                    this.push(`docker errorDetail: ${JSON.stringify(data.errorDetail)}\n`);
+                                } else {
+                                    this.push(`docker (other): ${JSON.stringify(data)}\n`);
+                                }
+                            } catch (e) {
+                                this.push(`docker (raw): ${chunk.toString()}`);
+                            }
+                            callback();
+                        },
+                    })
+                ).pipe(process.stdout);
                 output.on("end", resolve);
+                output.on("error", reject);
+            } else {
+                reject(new Error("No output stream from buildImage"));
             }
         });
     });
@@ -384,9 +434,9 @@ export const showImages = async (
 ): Promise<void> => {
     const { docker } = await getDocker(config, id, log);
     (await docker.listImages({ all: true }))
-        .filter((e) => /avaplatform\/avalanchego:.*/.exec(e.RepoTags[0]))
+        .filter((e) => e.RepoTags && e.RepoTags[0] && /avaplatform\/avalanchego:.*/.exec(e.RepoTags[0]))
         .forEach((e) => {
-            log.write(`${e.RepoTags[0]}: id(${e.Id})\n`);
+            log.write(`${e.RepoTags![0]}: id(${e.Id})\n`);
         });
 };
 
@@ -400,6 +450,7 @@ export const rmImage = async (
     const patt = /avaplatform\/avalanchego:(.*)/;
     const pms: Promise<void>[] = [];
     (await docker.listImages({ all: true })).forEach((e) => {
+        if (!e.RepoTags || !e.RepoTags[0]) return;
         const m = patt.exec(e.RepoTags[0]);
         if (m == null) return;
         if (m[1] === imageTag) {
@@ -443,6 +494,8 @@ const main = () => {
         const basePath = path.dirname(profile);
         if (!path.isAbsolute(config.keysDir))
             config.keysDir = path.join(basePath, config.keysDir);
+        if (config.stakingKeysDir && !path.isAbsolute(config.stakingKeysDir))
+            config.stakingKeysDir = path.join(basePath, config.stakingKeysDir);
         for (const id in config.hosts) {
             const h = config.hosts[id];
             if (!path.isAbsolute(h.privateKeyFile))

@@ -36,6 +36,11 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __spreadArray = (this && this.__spreadArray) || function (to, from) {
+    for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+        to[j] = from[i];
+    return to;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -49,6 +54,7 @@ var util_1 = __importDefault(require("util"));
 var stream_1 = __importDefault(require("stream"));
 var dns_1 = __importDefault(require("dns"));
 var fs_1 = __importDefault(require("fs"));
+var os_1 = __importDefault(require("os"));
 var path_1 = __importDefault(require("path"));
 var tar_1 = __importDefault(require("tar"));
 var ts_json_validator_1 = require("ts-json-validator");
@@ -71,6 +77,10 @@ exports.validatorsSchema = ts_json_validator_1.createSchema({
         keysDir: ts_json_validator_1.createSchema({
             type: "string",
             title: "the directory of all keys/certs",
+        }),
+        stakingKeysDir: ts_json_validator_1.createSchema({
+            type: "string",
+            title: "the directory of staking keys (BLS)",
         }),
         baseStakingPort: ts_json_validator_1.createSchema({
             type: "number",
@@ -168,7 +178,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                     end = start + 1;
                 }
                 _loop_1 = function (i) {
-                    var v, name_1, workDir_1, stakingPort_1, httpHost, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, _run;
+                    var v, name_1, workDir_1, stakingPort_1, httpHost, httpPort_1, affin_1, cpuPerNode, cpuStride, j, exposedPorts_1, portBindings_1, runValidator;
                     return __generator(this, function (_d) {
                         switch (_d.label) {
                             case 0:
@@ -196,8 +206,8 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                     { HostPort: "" + stakingPort_1 },
                                 ];
                                 portBindings_1[httpPort_1 + "/tcp"] = [{ HostIp: "" + httpHost, HostPort: "" + httpPort_1 }];
-                                _run = function () { return __awaiter(void 0, void 0, void 0, function () {
-                                    var cmd, key, c;
+                                runValidator = function () { return __awaiter(void 0, void 0, void 0, function () {
+                                    var tempKeysDir, blsKeyArg, blsKeyNameAlt, blsSourceAlt, cmd, tarFileName, key, c;
                                     return __generator(this, function (_a) {
                                         switch (_a.label) {
                                             case 0: return [4 /*yield*/, sshConn.exec("mkdir -p " + workDir_1 + "/" + v + "/").catch(function (_) {
@@ -206,7 +216,19 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                             case 1:
                                                 _a.sent();
                                                 log.write("starting validator " + v + " on core " + affin_1.join(",") + "\n");
-                                                cmd = [
+                                                tempKeysDir = fs_1.default.mkdtempSync(path_1.default.join(os_1.default.tmpdir(), "a2v-keys-"));
+                                                shelljs_1.default.cp(path_1.default.join(keysDir, v + ".crt"), path_1.default.join(tempKeysDir, v + ".crt"));
+                                                shelljs_1.default.cp(path_1.default.join(keysDir, v + ".key"), path_1.default.join(tempKeysDir, v + ".key"));
+                                                blsKeyArg = [];
+                                                if (config.stakingKeysDir) {
+                                                    blsKeyNameAlt = v + ".bls.key";
+                                                    blsSourceAlt = path_1.default.join(config.stakingKeysDir, blsKeyNameAlt);
+                                                    if (fs_1.default.existsSync(blsSourceAlt)) {
+                                                        shelljs_1.default.cp(blsSourceAlt, path_1.default.join(tempKeysDir, v + ".bls.key"));
+                                                        blsKeyArg = ["--staking-signer-key-file", "/staking/" + v + ".bls.key"];
+                                                    }
+                                                }
+                                                cmd = __spreadArray([
                                                     "/avalanchego/build/avalanchego",
                                                     "--public-ip",
                                                     "" + host,
@@ -219,17 +241,16 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                                     "--staking-tls-cert-file",
                                                     "/staking/" + v + ".crt",
                                                     "--staking-tls-key-file",
-                                                    "/staking/" + v + ".key",
-                                                ];
+                                                    "/staking/" + v + ".key"
+                                                ], blsKeyArg);
+                                                tarFileName = path_1.default.join(keysDir, v + ".tar");
                                                 key = tar_1.default
-                                                    .c({ cwd: keysDir, prefix: "./staking" }, [
-                                                    "./" + v + ".crt",
-                                                    "./" + v + ".key",
-                                                ])
-                                                    .pipe(fs_1.default.createWriteStream(path_1.default.join(keysDir, v) + ".tar"));
+                                                    .c({ cwd: tempKeysDir, prefix: "./staking" }, fs_1.default.readdirSync(tempKeysDir))
+                                                    .pipe(fs_1.default.createWriteStream(tarFileName));
                                                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
                                             case 2:
                                                 _a.sent();
+                                                shelljs_1.default.rm("-rf", tempKeysDir);
                                                 return [4 /*yield*/, docker.createContainer({
                                                         Image: "avaplatform/avalanchego:" + config.release,
                                                         name: name_1,
@@ -247,7 +268,7 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                             case 3:
                                                 c = _a.sent();
                                                 /* eslint-enable @typescript-eslint/naming-convention */
-                                                return [4 /*yield*/, c.putArchive(path_1.default.join(keysDir, v) + ".tar", {
+                                                return [4 /*yield*/, c.putArchive(tarFileName, {
                                                         path: "/",
                                                     })];
                                             case 4:
@@ -262,10 +283,8 @@ var run = function (config, id, nodeId, log) { return __awaiter(void 0, void 0, 
                                         }
                                     });
                                 }); };
-                                /* eslint-enable no-underscore-dangle */
-                                return [4 /*yield*/, _run()];
+                                return [4 /*yield*/, runValidator()];
                             case 2:
-                                /* eslint-enable no-underscore-dangle */
                                 _d.sent();
                                 _d.label = 3;
                             case 3: return [2 /*return*/];
@@ -393,7 +412,7 @@ var showValidators = function (config, id, nodeId, log) { return __awaiter(void 
 }); };
 exports.showValidators = showValidators;
 var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, void 0, function () {
-    var branch, dockerhubRepo, remote, gopath, workprefix, avalancheClone, tarDockerFile, tag, key, docker;
+    var branch, dockerhubRepo, remote, gopath, workprefix, avalancheClone, tarDockerFile, tag, key, tarStream, docker;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -403,35 +422,65 @@ var buildImage = function (config, id, log) { return __awaiter(void 0, void 0, v
                 gopath = "./.build_image_gopath";
                 workprefix = path_1.default.join(gopath, "src", "github.com/ava-labs");
                 shelljs_1.default.rm("-rf", workprefix);
+                shelljs_1.default.mkdir("-p", workprefix);
                 avalancheClone = path_1.default.join(workprefix, "avalanchego");
-                shelljs_1.default.exec("git config --global crendential.helper cache");
+                shelljs_1.default.exec("git config --global credential.helper cache");
                 shelljs_1.default.exec("git clone \"" + remote + "\" \"" + avalancheClone + "\" --depth=1 -b " + branch);
                 shelljs_1.default.exec("sed -i 's/^.git$//g' '" + path_1.default.join(avalancheClone, ".dockerignore") + "'");
-                tarDockerFile = path_1.default.join(avalancheClone, "avalanchego.tar");
+                shelljs_1.default.exec("sed -i 's/--platform=\\$BUILDPLATFORM //g' '" + path_1.default.join(avalancheClone, "Dockerfile") + "'");
+                tarDockerFile = path_1.default.join(gopath, "avalanchego.tar");
                 tag = dockerhubRepo + ":" + branch;
+                log.write("Creating tar archive at " + tarDockerFile + "...\n");
                 key = tar_1.default
                     .c({ cwd: avalancheClone }, ["."])
                     .pipe(fs_1.default.createWriteStream(tarDockerFile));
                 return [4 /*yield*/, new Promise(function (fulfill) { return key.on("finish", fulfill); })];
             case 1:
                 _a.sent();
+                log.write("Tar created, reading into memory...\n");
+                tarStream = fs_1.default.createReadStream(tarDockerFile);
                 return [4 /*yield*/, getDocker(config, id, log)];
             case 2:
                 docker = (_a.sent()).docker;
+                log.write("Sending to Docker daemon...\n");
                 return [4 /*yield*/, new Promise(function (resolve, reject) {
-                        docker.buildImage(tarDockerFile, { t: tag }, function (err, output) {
+                        /* eslint-disable @typescript-eslint/naming-convention */
+                        void docker.buildImage(tarStream, { t: tag, buildargs: { GO_VERSION: "1.24.11" } }, function (err, output) {
+                            /* eslint-enable @typescript-eslint/naming-convention */
                             if (err) {
+                                log.write("Build error: " + err.message + "\n");
                                 reject(err);
+                                return;
                             }
                             if (output) {
-                                output
-                                    .pipe(new stream_1.default.Transform({
+                                output.pipe(new stream_1.default.Transform({
                                     transform: function (chunk, encoding, callback) {
-                                        return callback(null, "docker: " + JSON.parse(chunk).stream);
+                                        try {
+                                            var data = JSON.parse(chunk.toString());
+                                            if (data.stream) {
+                                                this.push("docker: " + data.stream);
+                                            }
+                                            else if (data.error) {
+                                                this.push("docker error: " + data.error + "\n");
+                                            }
+                                            else if (data.errorDetail) {
+                                                this.push("docker errorDetail: " + JSON.stringify(data.errorDetail) + "\n");
+                                            }
+                                            else {
+                                                this.push("docker (other): " + JSON.stringify(data) + "\n");
+                                            }
+                                        }
+                                        catch (e) {
+                                            this.push("docker (raw): " + chunk.toString());
+                                        }
+                                        callback();
                                     },
-                                }))
-                                    .pipe(process.stdout);
+                                })).pipe(process.stdout);
                                 output.on("end", resolve);
+                                output.on("error", reject);
+                            }
+                            else {
+                                reject(new Error("No output stream from buildImage"));
                             }
                         });
                     })];
@@ -463,7 +512,7 @@ var showImages = function (config, id, log) { return __awaiter(void 0, void 0, v
                 return [4 /*yield*/, docker.listImages({ all: true })];
             case 2:
                 (_a.sent())
-                    .filter(function (e) { return /avaplatform\/avalanchego:.*/.exec(e.RepoTags[0]); })
+                    .filter(function (e) { return e.RepoTags && e.RepoTags[0] && /avaplatform\/avalanchego:.*/.exec(e.RepoTags[0]); })
                     .forEach(function (e) {
                     log.write(e.RepoTags[0] + ": id(" + e.Id + ")\n");
                 });
@@ -484,6 +533,8 @@ var rmImage = function (config, id, imageTag, log) { return __awaiter(void 0, vo
                 return [4 /*yield*/, docker.listImages({ all: true })];
             case 2:
                 (_a.sent()).forEach(function (e) {
+                    if (!e.RepoTags || !e.RepoTags[0])
+                        return;
                     var m = patt.exec(e.RepoTags[0]);
                     if (m == null)
                         return;
@@ -541,6 +592,8 @@ var main = function () {
         var basePath = path_1.default.dirname(profile);
         if (!path_1.default.isAbsolute(config.keysDir))
             config.keysDir = path_1.default.join(basePath, config.keysDir);
+        if (config.stakingKeysDir && !path_1.default.isAbsolute(config.stakingKeysDir))
+            config.stakingKeysDir = path_1.default.join(basePath, config.stakingKeysDir);
         for (var id in config.hosts) {
             var h = config.hosts[id];
             if (!path_1.default.isAbsolute(h.privateKeyFile))

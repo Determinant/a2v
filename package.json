@@ -1,11 +1,11 @@
 {
     "name": "a2v",
-    "version": "0.1.9",
+    "version": "0.2.0",
     "author": "Ted Yin <tederminant@gmail.com>",
     "license": "MIT",
     "homepage": "https://github.com/Determinant/avax-auto-validator",
     "dependencies": {
-        "dockerode": "^3.3.0",
+        "dockerode": "^4.0.9",
         "shelljs": "^0.8.4",
         "ssh2-promise": "^0.1.7",
         "strip-json-comments": "^3.1.1",
@@ -14,7 +14,7 @@
         "yargs": "^17.0.1"
     },
     "devDependencies": {
-        "@types/dockerode": "^3.2.3",
+        "@types/dockerode": "^3.3.47",
         "@types/node": "^15.0.2",
         "@types/shelljs": "^0.8.8",
         "@types/tar": "^4.0.4",
